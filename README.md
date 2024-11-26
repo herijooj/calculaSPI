@@ -9,7 +9,7 @@
   **Detalhes:**
    - substituição do script em chsh por script em bash
    - alteração para ler arquivos com caracteres especiais
-   - makefile
+   - substituição do script em fortran por script em python
    - caminhos relativos
    - saidas de erro
 
@@ -22,14 +22,14 @@ O fluxo do programa é o seguinte:
 1. **Entrada de Dados**: O programa recebe como entrada um arquivo de controle no formato `.ctl`, que contém dados de precipitação mensal.
 2. **Conversão para Formato NetCDF**: O script converte os dados de precipitação para o formato `.nc` usando **CDO** (Climate Data Operators).
 3. **Cálculo do SPI**: O cálculo do SPI é feito utilizando o script NCL (`calcula_spi.ncl`), que gera a saída em formato texto.
-4. **Conversão de Dados para Binário**: A saída gerada é convertida para o formato binário usando o programa em **Fortran** (`converte_txt_bin.f90`).
+4. **Conversão de Dados para Binário**: A saída gerada é convertida para o formato binário usando o programa em **Fortran** (`converte_txt_bin.f90`). (Não mais! Graças a Deus!)
 5. **Geração de Arquivo de Controle**: Um novo arquivo `.ctl` é gerado, com as variáveis ajustadas para o cálculo do SPI.
 
 ## Requisitos
 
 - **NCL** (NCAR Command Language) instalado no sistema.
 - **CDO** (Climate Data Operators) para conversão de formatos de dados.
-- **Fortran** para compilar o programa `converte_txt_bin.f90`.
+- ~~Fortran para compilar o programa `converte_txt_bin.f90`.~~ (Não mais! obreigado Deus!)
 
 ## Como Usar
 
@@ -73,8 +73,8 @@ O fluxo do programa é o seguinte:
 ## Detalhes de Implementação
 
 - O script principal `calcula_spi.sh` é responsável pela execução do fluxo de trabalho, incluindo a verificação dos parâmetros de entrada, conversão de dados, e execução do cálculo do SPI.
-- O script em **Csh** (`aux_param.cshrc`) chama o script NCL para o cálculo do SPI.
-- O programa em **Fortran** (`converte_txt_bin.f90`) converte a saída de texto para o formato binário esperado.
+- ~~O script em **Csh** (`aux_param.cshrc`) chama o script NCL para o cálculo do SPI.~~ essa parte foi colocada no script em **Bash**.
+- ~~O programa em **Fortran** (`converte_txt_bin.f90`) converte a saída de texto para o formato binário esperado.~~ (Agora em python!)
 
 ### Observações
 
@@ -82,10 +82,11 @@ O fluxo do programa é o seguinte:
 - Certifique-se de que os nomes dos arquivos não contenham caracteres especiais que possam causar problemas ao ser processados pelo script em **Bash**.
 - O arquivo `.ctl` de entrada deve conter a variável `cxc`, que é substituída por `spi` durante o processamento.
 
-## Exemplo de Execução
+## Exemplo de Execução para vários meses
 
 ```bash
-calcula_spi dados_precipitacao.ctl 12
+   SPI_NUM="3 6 9 12 24"
+   for SPI in $SPI_NUM; do
+      ./calcula_spi /dados/entrada/precipitacao.ctl $SPI
+   done
 ```
-
-Este comando irá calcular o SPI com base nos dados de precipitação contidos no arquivo `dados_precipitacao.ctl`, usando uma janela de 12 meses.
