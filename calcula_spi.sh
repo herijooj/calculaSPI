@@ -39,18 +39,19 @@ if [[ $# != 2 ]]; then
     exit 1
 else
     CTL_IN=$1
+    echo -e "${GREEN}CTL_IN:${NC} ${BLUE}${CTL_IN}${NC}"
     FILE_NAME=$(basename "$CTL_IN" .ctl)
     if [[ ${#FILE_NAME} -lt 2 ]]; then
         echo -e "${RED}ERRO!${NC} O nome do arquivo de entrada deve conter mais de uma letra."
         exit 1
     fi
-    
+
     # Verifica se a variável 'cxc' existe no arquivo ctl
     if ! grep -q "^cxc" "${CTL_IN}"; then
         echo -e "${RED}ERRO!${NC} O arquivo ctl deve conter a variável 'cxc'."
         exit 1
     fi
-
+    
     N_MESES_SPI=$2
     PREFIXO=$(basename "${CTL_IN}" .ctl)
     NX=$(grep xdef "${CTL_IN}" | tr "\t" " " | tr -s " " | cut -d" " -f2)
@@ -65,31 +66,49 @@ else
 
     DIR_OUT="${DIR_IN}/saida_${PREFIXO}"
     CTL_IN=$(basename "${CTL_IN}")
-
     if [[ ! -e "${DIR_OUT}" ]]; then
         mkdir "${DIR_OUT}"
     fi
 
     cdo -f nc import_binary "${DIR_IN}/${CTL_IN}" "${DIR_IN}/${PREFIXO}.nc"
 
-    ./src/aux_param.sh "${DIR_IN}/" "${DIR_OUT}/" "${PREFIXO}.nc" "${PREFIXO}" "${N_MESES_SPI}"
-    ./bin/converte_txt_bin "${PREFIXO}_${N_MESES_SPI}.txt" "${PREFIXO}_spi${N_MESES_SPI}.bin" "${DIR_OUT}" "${DIR_OUT}" "${NX}" "${NY}" "${NT}"
+    # Definindo e exportando as variáveis para que o NCL possa acessá-las
+    export DIRIN="${DIR_IN}/"
+    export DIROUT="${DIR_OUT}/"
+    export FILEIN="${PREFIXO}.nc"
+    export PREFIXO="${PREFIXO}"
+    export N_MESES_SPI="${N_MESES_SPI}"
 
+    # Executando o script NCL para calcular o SPI
+    echo -e "${GREEN}Calculando o SPI...${NC}"
+    ncl ./src/calcula_spi.ncl
+
+    if [[ ! -e "${DIR_OUT}/${PREFIXO}_${N_MESES_SPI}.txt" ]]; then
+        echo -e "${RED}ERRO!${NC} O arquivo de saída não foi gerado."
+        exit 1
+    fi
+
+    # Chamar o script Python para converter o arquivo
+    echo -e "${GREEN}Convertendo o arquivo para bin...${NC}"
+    python3 ./src/converte_txt_bin.py "${DIR_OUT}/${PREFIXO}_${N_MESES_SPI}.txt" "${DIR_OUT}/${PREFIXO}_spi${N_MESES_SPI}.bin" "${NX}" "${NY}" "${NT}"
+
+    echo -e "${GREEN}Escrevendo arquivo CTL...${NC}"
     ARQ_BIN_IN="$(grep dset "${DIR_IN}/${CTL_IN}" | tr -s " " | cut -d"^" -f2)"
     ARQ_BIN_OUT="${PREFIXO}_spi${N_MESES_SPI}.bin"
     CTL_OUT="${PREFIXO}_spi${N_MESES_SPI}.ctl"
 
     cp "${DIR_IN}/${CTL_IN}" "${DIR_OUT}/${CTL_OUT}"
 
-    ARQ_BIN_IN_ESCAPED=$(printf '%s' "$(basename "$ARQ_BIN_IN" .bin)" | sed 's/[][\/$*.^|]/\\&/g') # Escapar caracteres especiais, caso o nome do arquivo contenha +_[](){}^$*.?|\
-    ARQ_BIN_OUT_ESCAPED=$(printf '%s' "$(basename "$ARQ_BIN_OUT" .bin)" | sed 's/[][\/$*.^|]/\\&/g') # 
+    ARQ_BIN_IN_ESCAPED=$(printf '%s' "$(basename "$ARQ_BIN_IN" .bin)" | sed 's/[][\/$*.^|]/\\&/g')
+    ARQ_BIN_OUT_ESCAPED=$(printf '%s' "$(basename "$ARQ_BIN_OUT" .bin)" | sed 's/[][\/$*.^|]/\\&/g')
 
     # Substituir apenas na linha que começa com 'dset'
-    sed -i "/^dset/s#${ARQ_BIN_IN_ESCAPED}#${ARQ_BIN_OUT_ESCAPED}#g" "${DIR_OUT}/${CTL_OUT}" 
+    sed -i "/^dset/s#${ARQ_BIN_IN_ESCAPED}#${ARQ_BIN_OUT_ESCAPED}#g" "${DIR_OUT}/${CTL_OUT}"
 
     # Substituir 'cxc' por 'spi' apenas entre 'vars' e 'endvars'
     sed -i "/^vars/,/^endvars/s#cxc#spi#g" "${DIR_OUT}/${CTL_OUT}"
 
+    echo -e "${GREEN}Limpando arquivos temporários...${NC}"
     rm "${DIR_OUT}/${PREFIXO}_${N_MESES_SPI}.txt"
     rm "${DIR_IN}/${PREFIXO}.nc"
 fi
