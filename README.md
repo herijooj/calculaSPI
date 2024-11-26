@@ -1,5 +1,7 @@
 # Calcula SPI
 
+![SPI](src/pics/spi.png)
+
 **Implementado por Eduardo Machado**  
 **Ano: 2015**
 
@@ -60,7 +62,17 @@ O fluxo do programa é o seguinte:
    Para ver as opções de ajuda, execute:
 
    ```bash
-   calcula_spi -h
+      (base) hericcamargo@chagos:~/Programas/calcula_SPI$ ./calcula_spi.sh -h
+      Uso: ./calcula_spi.sh [Arq .ctl] [Nº de meses]
+      Esse script calcula o SPI a partir de um arquivo .ctl
+      O arquivo .ctl deve conter a variável 'cxc'.
+      O script gera um arquivo .bin e um arquivo .ctl com a variável 'spi'
+      Tome cuidado com o nome do arquivo de entrada, o script é sensível a isso.
+      ATENÇÃO! Rode na Chagos. na minha máquina local não funciona.
+      Opções:
+      -h, --help		Mostra essa mensagem de ajuda e sai
+      Exemplo:
+      ./calcula_spi.sh ./arquivos/precipitacao.ctl 3
    ```
 
 4. **Arquivos Gerados**:
@@ -90,3 +102,5 @@ O fluxo do programa é o seguinte:
       ./calcula_spi /dados/entrada/precipitacao.ctl $SPI
    done
 ```
+
+![SPI](src/pics/terminal.png)
