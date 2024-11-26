@@ -104,3 +104,11 @@ O fluxo do programa é o seguinte:
 ```
 
 ![SPI](src/pics/terminal.png)
+
+## Melhorias Futuras
+
+1. A leitura é feita por um grep, se o arquivo for muito "genérico" ou conter alguma palavra chave do .CTL o script pode falhar.
+2. O programa só aceita arquivos com variável cxc, se a variável for outra o programa falha. (o que é correto, mas as vezes você muda a variável).
+3. Necessidade de adicionar aliases no .bashrc para funcionar.
+4. Dependência do NCL, deveria estar dentro do src.
+5. o NCL é EOL desde 2019, deveria ser substituído por outra coisa. (problema do técnico do futuro)
