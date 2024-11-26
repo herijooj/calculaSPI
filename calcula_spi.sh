@@ -20,6 +20,7 @@ function show_help() {
     echo -e "O arquivo .ctl deve conter a variável 'cxc'."
     echo -e "O script gera um arquivo .bin e um arquivo .ctl com a variável 'spi'"
     echo -e "Tome cuidado com o nome do arquivo de entrada, o script é sensível a isso."
+    echo -e "${RED}ATENÇÃO!${NC} Rode na Chagos. na minha máquina local não funciona."
     echo -e "${YELLOW}Opções:${NC}"
     echo -e "  ${GREEN}-h${NC}, ${GREEN}--help${NC}\t\tMostra essa mensagem de ajuda e sai"
     echo -e "${YELLOW}Exemplo:${NC}"

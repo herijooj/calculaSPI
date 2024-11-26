@@ -44,6 +44,8 @@ O fluxo do programa é o seguinte:
    calcula_spi [ARQUIVO_CTL_ENTRADA] [N_MESES_SPI]
    ```
 
+   > **Atenção**: Este script deve ser executado na **Chagos**. Ele não funciona na minha máquina local.
+
    Substitua:
    - `[ARQUIVO_CTL_ENTRADA]` pelo caminho do arquivo `.ctl` que contém os dados de precipitação.
    - `[N_MESES_SPI]` pelo número de meses a ser usado para o cálculo do SPI (ex: 3 para 3 meses, 12 para 12 meses).
