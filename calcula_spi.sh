@@ -21,6 +21,9 @@ then
     set_colors
 fi
 
+# Determina o diretório onde o script está localizado
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Função de ajuda
 function show_help() {
     echo -e "${YELLOW}Uso:${NC} ${GREEN}./calcula_spi.sh${NC} ${BLUE}[Arq .ctl]${NC} ${BLUE}[Nº de meses...]${NC} ${GREEN}[--var VARIABLE]${NC} ${GREEN}[--out-prefix PREFIX]${NC}"
@@ -160,9 +163,7 @@ fi
 
 # Verifica se o arquivo binário existe
 PREFIXO=$(basename "${CTL_IN}" .ctl)
-cd "$(dirname "${CTL_IN}")"
-DIR_IN=$(pwd)
-cd - >/dev/null
+DIR_IN=$(cd "$(dirname "${CTL_IN}")" && pwd)
 
 if [[ ! -f "${DIR_IN}/${PREFIXO}.bin" ]]; then
     echo -e "${RED}ERRO!${NC} O arquivo binário ${DIR_IN}/${PREFIXO}.bin não existe."
@@ -200,7 +201,7 @@ for N_MESES_SPI in "${N_MESES_SPI_LIST[@]}"; do
 
     # Executando o script NCL para calcular o SPI
     echo -e "${GREEN}Calculando o SPI para N_MESES_SPI=${N_MESES_SPI}...${NC}"
-    ncl ./src/calcula_spi.ncl
+    ncl "${SCRIPT_DIR}/src/calcula_spi.ncl"
 
     # Move resultado para o destino final
     mv "${TEMP_DIR}/${PREFIXO}_${N_MESES_SPI}.txt" "${DIR_OUT}/"
@@ -212,7 +213,7 @@ for N_MESES_SPI in "${N_MESES_SPI_LIST[@]}"; do
 
     # Chamar o script Python para converter o arquivo
     echo -e "${GREEN}Convertendo o arquivo para bin...${NC}"
-    python3 ./src/converte_txt_bin.py "${DIR_OUT}/${PREFIXO}_${N_MESES_SPI}.txt" "${DIR_OUT}/${PREFIXO}_spi${N_MESES_SPI}.bin" "${NX}" "${NY}" "${NT}"
+    python3 "${SCRIPT_DIR}/src/converte_txt_bin.py" "${DIR_OUT}/${PREFIXO}_${N_MESES_SPI}.txt" "${DIR_OUT}/${PREFIXO}_spi${N_MESES_SPI}.bin" "${NX}" "${NY}" "${NT}"
 
     echo -e "${GREEN}Escrevendo arquivo CTL...${NC}"
     ARQ_BIN_IN="${DSET}"
@@ -239,3 +240,4 @@ for N_MESES_SPI in "${N_MESES_SPI_LIST[@]}"; do
 done
 
 # Não é necessário remover TEMP_DIR explicitamente, o trap irá cuidar disso
+# End path: calcula_spi.sh
