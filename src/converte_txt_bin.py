@@ -1,3 +1,10 @@
+# converte_txt_bin.py 
+
+# Autor: Heric Camargo
+# Data: 2024
+
+# Descrição: Este script converte um arquivo de texto para um arquivo binário. 
+# o antigo era em Fortran, Converti para Python.
 import sys
 import numpy as np
 
@@ -18,3 +25,4 @@ if data.size != nx * ny * nt:
 
 # Salva os dados em formato binário
 data.tofile(arq_out)
+# end path: src/converte_txt_bin.py

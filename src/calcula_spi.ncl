@@ -1,3 +1,5 @@
+; calcula_spi.ncl
+
 ; Implementado por Eduardo Machado
 ; 2015
 
@@ -8,10 +10,20 @@ begin
   dirOut = getenv("DIROUT")
   fileIn = getenv("FILEIN")
   prefixo = getenv("PREFIXO")
-  nMesesSpi = tointeger(getenv("N_MESES_SPI"))
+  nMesesSpi = toint(getenv("N_MESES_SPI"))
+  variable_name = getenv("VARIABLE_NAME")
 
+  ; Verifica se nMesesSpi é um número válido
+  if (ismissing(nMesesSpi)) then
+    print("Erro: N_MESES_SPI não é um número válido.")
+    exit
+  end if
+
+  ; Abre o arquivo NetCDF
   f = addfile(dirIn + fileIn, "r")
-  prc = flt2dble(f->cxc)
+
+  ; Lê a variável especificada
+  prc = flt2dble(f->$variable_name$)
   pmsg = prc@_FillValue
 
   printVarSummary(prc)
@@ -28,3 +40,4 @@ begin
   spi@units = "run=" + nMesesSpi
   copy_VarCoords(prc, spi)
 end
+; end path: src/calcula_spi.ncl
