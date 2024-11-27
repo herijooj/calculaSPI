@@ -128,5 +128,6 @@ Nesse exemplo:
 
 1. A leitura agora é feita de forma robusta, evitando problemas com arquivos `.ctl` que contenham palavras-chave ou variáveis com nomes semelhantes ao nome do arquivo. (Corrigido!)
 2. O programa permite especificar a variável a ser processada com a opção `--var VARIABLE`, não estando mais limitado à variável `cxc`. (Corrigido!)
-3. ~~Necessidade de adicionar aliases no `.bashrc` para funcionar.~~ (Não é mais necessário, o script pode ser executado diretamente.)
-4. Dependência do NCL, idealmente o script NCL deveria ser substituído por uma alternativa moderna, já que o NCL está obsoleto desde 2019. (Futuro trabalho.)
+3. Necessidade de adicionar aliases no `.bashrc` para funcionar.
+4. Dependência do NCL, deveria estar dentro do src.
+5. o NCL é EOL desde 2019, deveria ser substituído por outra coisa. (problema do técnico do futuro)
