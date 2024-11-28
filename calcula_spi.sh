@@ -225,6 +225,9 @@ if [ "$SILENT_MODE" = false ]; then
     ncl $NCL_OPTS "${SCRIPT_DIR}/src/resumo_spi.ncl" # Detalhes do arquivo de entrada
 fi
 
+if [ "$SILENT_MODE" = true ]; then
+    echo -e "${GREEN}Calculando os SPI's${NC} ${BLUE}${N_MESES_SPI_LIST[@]}${NC} ${GREEN}${NC}"
+fi
 
 # Loop sobre cada valor de N_MESES_SPI em paralelo
 for N_MESES_SPI in "${N_MESES_SPI_LIST[@]}"; do
@@ -232,7 +235,9 @@ for N_MESES_SPI in "${N_MESES_SPI_LIST[@]}"; do
         export N_MESES_SPI="${N_MESES_SPI}"
 
         # Executando o script NCL para calcular o SPI
-        echo -e "${GREEN}Calculando o SPI ${N_MESES_SPI}...${NC}"
+        if [ "$SILENT_MODE" = false ]; then
+            echo -e "${GREEN}Calculando o SPI ${N_MESES_SPI}...${NC}"
+        fi
         ncl -Q "${SCRIPT_DIR}/src/calcula_spi.ncl" # silent by default
 
         # Move resultado para o destino final
@@ -244,14 +249,16 @@ for N_MESES_SPI in "${N_MESES_SPI_LIST[@]}"; do
         fi
 
         # Chamar o script Python para converter o arquivo
-        echo -e "${GREEN}Convertendo o arquivo .txt para .bin para o SPI ${N_MESES_SPI}...${NC}"
+        if [ "$SILENT_MODE" = false ]; then
+            echo -e "${GREEN}Convertendo o arquivo .txt para .bin para o SPI ${N_MESES_SPI}...${NC}"
+        fi
         python3 "${SCRIPT_DIR}/src/converte_txt_bin.py" "${TEMP_DIR}/saida_${N_MESES_SPI}.txt" "${OUT_DIR}/${PREFIXO}_spi${N_MESES_SPI}.bin" "${NX}" "${NY}" "${NT}"
 
-        echo -e "${GREEN}Escrevendo arquivo CTL e BIN para O SPI ${N_MESES_SPI}...${NC}"
         CTL_OUT="${OUT_DIR%/}/${PREFIXO}_spi${N_MESES_SPI}.ctl"
-
+        if [ "$SILENT_MODE" = false ]; then
+            echo -e "${GREEN}Copiando e ajustando o arquivo CTL Para o diretório final. ${N_MESES_SPI}...${NC}"
+        fi
         cp "${DIR_IN}/${CTL_BASENAME}" "${CTL_OUT}"
-        #echo -e "${GREEN}DIR_OUT para N_MESES_SPI=${N_MESES_SPI}:${NC} ${BLUE}${OUT_DIR}${NC}"
         
         # Ajustar a substituição no arquivo .ctl de saída
         sed -i "/^dset/s#^dset.*#dset \^${PREFIXO}_spi${N_MESES_SPI}.bin#g" "${CTL_OUT}"
