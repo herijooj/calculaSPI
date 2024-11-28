@@ -221,8 +221,8 @@ export VARIABLE_NAME="${VARIABLE_NAME}"
 
 if [ "$SILENT_MODE" = false ]; then
     echo -e "${GREEN}Detalhes:${NC}"
-    ncl $NCL_OPTS "${SCRIPT_DIR}/src/resumo_spi.ncl"
-    echo ""
+    cdo -V 2>&1 | head -n 1 # CDO version
+    ncl $NCL_OPTS "${SCRIPT_DIR}/src/resumo_spi.ncl" # Detalhes do arquivo de entrada
 fi
 
 
