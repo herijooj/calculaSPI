@@ -26,7 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Função de ajuda
 function show_help() {
-    echo -e "${YELLOW}Uso:${NC} ${GREEN}./calcula_spi.sh${NC} ${BLUE}[Arq .ctl]${NC} ${BLUE}[Nº de meses...]${NC} ${GREEN}[--var VARIABLE]${NC} ${GREEN}[--out PREFIX]${NC}"
+    echo -e "${YELLOW}Uso:${NC} ${GREEN}./calcula_spi.sh${NC} ${BLUE}[Arq .ctl]${NC} ${BLUE}[Nº de meses...]${NC} ${GREEN}[--var VARIABLE]${NC} ${GREEN}[--out PREFIX]${NC} ${GREEN}[-s]${NC}"
     echo -e "   Esse script calcula o SPI a partir de um arquivo .ctl"
     echo -e "   O script gera um arquivo .bin e um arquivo .ctl com a variável 'spi'"
     echo -e "${RED}ATENÇÃO!${NC} Rode na Chagos. Na minha máquina local não funciona."
@@ -34,12 +34,14 @@ function show_help() {
     echo -e "  ${GREEN}-h${NC}, ${GREEN}--help${NC}\t\t\tMostra essa mensagem de ajuda e sai"
     echo -e "  ${GREEN}--var VARIABLE${NC}, ${GREEN}-v VARIABLE${NC}\t(Opcional) Especifica a variável a ser processada (padrão 'cxc')"
     echo -e "  ${GREEN}--out DIR${NC}, ${GREEN}-o DIR${NC}\t\t(Opcional) Especifica o diretório de saída (padrão: diretório atual com prefixo 'saida_')"
+    echo -e "  ${GREEN}-s${NC}, ${GREEN}--silent${NC}\t\t\t(Recomendado) Modo silencioso - reduz a saída de mensagens"
     echo -e "${YELLOW}Exemplo:${NC}"
-    echo -e "  ${GREEN}./calcula_spi.sh${NC} ${BLUE}./arquivos/precipitacao.ctl${NC} ${BLUE}3 6 9 12${NC} ${GREEN}--var cxc${NC} ${GREEN}--out resultado_${NC}"
+    echo -e "  ${GREEN}./calcula_spi.sh${NC} ${BLUE}./arquivos/precipitacao.ctl${NC} ${BLUE}3 6 9 12${NC} ${GREEN}--var cxc${NC} ${GREEN}--out resultado_${NC} ${GREEN}-s${NC}"
 }
 
 # Inicializa a variável de nome de variável padrão
 VARIABLE_NAME="cxc"
+SILENT_MODE=false
 
 # Inicializa as variáveis
 CTL_IN=""
@@ -51,6 +53,10 @@ while [[ "$#" -gt 0 ]]; do
         -h|--help)
             show_help
             exit 0
+            ;;
+        -s|--silent)
+            SILENT_MODE=true
+            shift
             ;;
         --var|-v)
             VARIABLE_NAME="$2"
@@ -197,7 +203,13 @@ TEMP_DIR=$(mktemp -d)
 trap 'rm -rf -- "$TEMP_DIR"' EXIT
 
 # Converte para NetCDF no diretório temporário
-cdo -f nc import_binary "${DIR_IN}/${CTL_BASENAME}" "${TEMP_DIR}/${PREFIXO}.nc"
+if [ "$SILENT_MODE" = true ]; then
+    CDO_OPTS="-s"
+    NCL_OPTS="-Q"
+fi
+
+echo -e "${GREEN}Convertendo o arquivo binário para NetCDF...${NC}"
+cdo $CDO_OPTS -f nc import_binary "${DIR_IN}/${CTL_BASENAME}" "${TEMP_DIR}/${PREFIXO}.nc"
 
 # Define variáveis de ambiente para apontar para o diretório temporário
 export DIRIN="${TEMP_DIR}/"
@@ -206,45 +218,53 @@ export FILEIN="${PREFIXO}.nc"
 export PREFIXO="${PREFIXO}"
 export VARIABLE_NAME="${VARIABLE_NAME}"
 
-# Loop sobre cada valor de N_MESES_SPI
+# não usa string, usa um número
+if [ "$SILENT_MODE" = true ]; then
+    SILENT_MODE=1
+else
+    SILENT_MODE=0
+fi
+
+export SILENT_MODE="$SILENT_MODE"
+
+# Loop sobre cada valor de N_MESES_SPI em paralelo
 for N_MESES_SPI in "${N_MESES_SPI_LIST[@]}"; do
-    export N_MESES_SPI="${N_MESES_SPI}"
+    (
+        export N_MESES_SPI="${N_MESES_SPI}"
 
-    # Executando o script NCL para calcular o SPI
-    echo -e "${GREEN}Calculando o SPI para N_MESES_SPI=${N_MESES_SPI}...${NC}"
-    ncl "${SCRIPT_DIR}/src/calcula_spi.ncl"
+        # Executando o script NCL para calcular o SPI
+        echo -e "${GREEN}Calculando o SPI para N_MESES_SPI=${N_MESES_SPI}...${NC}"
+        ncl $NCL_OPTS "${SCRIPT_DIR}/src/calcula_spi.ncl"
 
-    # Move resultado para o destino final
-    mv "${TEMP_DIR}/${PREFIXO}_${N_MESES_SPI}.txt" "${TEMP_DIR}/saida_${N_MESES_SPI}.txt"
+        # Move resultado para o destino final
+        mv "${TEMP_DIR}/${PREFIXO}_${N_MESES_SPI}.txt" "${TEMP_DIR}/saida_${N_MESES_SPI}.txt"
 
-    if [[ ! -e "${TEMP_DIR}/saida_${N_MESES_SPI}.txt" ]]; then
-        echo -e "${RED}ERRO!${NC} O arquivo de saída não foi gerado."
-        exit 1
-    fi
+        if [[ ! -e "${TEMP_DIR}/saida_${N_MESES_SPI}.txt" ]]; then
+            echo -e "${RED}ERRO!${NC} O arquivo de saída para N_MESES_SPI=${N_MESES_SPI} não foi gerado."
+            exit 1
+        fi
 
-    # Chamar o script Python para converter o arquivo
-    echo -e "${GREEN}Convertendo o arquivo para bin...${NC}"
-    python3 "${SCRIPT_DIR}/src/converte_txt_bin.py" "${TEMP_DIR}/saida_${N_MESES_SPI}.txt" "${OUT_DIR}/${PREFIXO}_spi${N_MESES_SPI}.bin" "${NX}" "${NY}" "${NT}"
+        # Chamar o script Python para converter o arquivo
+        echo -e "${GREEN}Convertendo o arquivo .txt para .bin para N_MESES_SPI=${N_MESES_SPI}...${NC}"
+        python3 "${SCRIPT_DIR}/src/converte_txt_bin.py" "${TEMP_DIR}/saida_${N_MESES_SPI}.txt" "${OUT_DIR}/${PREFIXO}_spi${N_MESES_SPI}.bin" "${NX}" "${NY}" "${NT}"
 
-    echo -e "${GREEN}Escrevendo arquivo CTL e BIN...${NC}"
-    CTL_OUT="${OUT_DIR%/}/${PREFIXO}_spi${N_MESES_SPI}.ctl"
+        echo -e "${GREEN}Escrevendo arquivo CTL e BIN para N_MESES_SPI=${N_MESES_SPI}...${NC}"
+        CTL_OUT="${OUT_DIR%/}/${PREFIXO}_spi${N_MESES_SPI}.ctl"
 
-    cp "${DIR_IN}/${CTL_BASENAME}" "${CTL_OUT}"
-    echo -e "${GREEN}DIR_OUT:${NC} ${BLUE}${OUT_DIR}${NC}"
-    
-    # Ajustar a substituição no arquivo .ctl de saída
-    # Sempre usar '^' seguido do nome do novo arquivo binário
-    sed -i "/^dset/s#^dset.*#dset \^${PREFIXO}_spi${N_MESES_SPI}.bin#g" "${CTL_OUT}"
+        cp "${DIR_IN}/${CTL_BASENAME}" "${CTL_OUT}"
+        #echo -e "${GREEN}DIR_OUT para N_MESES_SPI=${N_MESES_SPI}:${NC} ${BLUE}${OUT_DIR}${NC}"
+        
+        # Ajustar a substituição no arquivo .ctl de saída
+        sed -i "/^dset/s#^dset.*#dset \^${PREFIXO}_spi${N_MESES_SPI}.bin#g" "${CTL_OUT}"
 
-    # Substituir a variável especificada por 'spi' entre 'vars' e 'endvars'
-    sed -i "/^vars/,/^endvars/{
-        s/^\(${VARIABLE_NAME}\(\s*=>\s*[^[:space:]]*\)\?\)\(\s.*\)/spi\3/
-    }" "${CTL_OUT}"
-
-    echo -e "${GREEN}Limpando arquivos temporários...${NC}"
-    rm "${TEMP_DIR}/saida_${N_MESES_SPI}.txt"
-
+        # Substituir a variável especificada por 'spi' entre 'vars' e 'endvars'
+        sed -i -E "/^vars/,/^endvars/{
+            s/^(${VARIABLE_NAME}([[:space:]]*=>[[:space:]]*[^[:space:]]*)?)([[:space:]].*)/spi\3/
+        }" "${CTL_OUT}"
+    ) &
 done
+wait
 
-# Não é necessário remover TEMP_DIR explicitamente, o trap irá cuidar disso
-# End path: calcula_spi.sh
+echo -e "${GREEN}DIR_OUT:${NC} ${BLUE}${OUT_DIR}${NC}"
+
+echo -e "${GREEN}Processamento concluído!${NC}"

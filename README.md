@@ -20,6 +20,8 @@
    - Correção de substituições no `sed` para evitar substituições indesejadas
    - Suporte a nomes de arquivos com um único caractere ou caracteres especiais
    - Adicionada opção para definir o prefixo do diretório de saída com `--out`
+   - Modo Silencioso
+   - Execução em paralelo
 
 Este conjunto de programas calcula o **Standardized Precipitation Index (SPI)** a partir de uma série de dados de precipitação mensal, utilizando uma abordagem em etapas que inclui a conversão de formatos de dados e o cálculo do SPI com o uso de **NCL** (NCAR Command Language) e **Python**.
 
@@ -48,7 +50,7 @@ O fluxo do programa é o seguinte:
    No terminal, execute o comando:
 
    ```bash
-   ./calcula_spi.sh [ARQUIVO_CTL_ENTRADA] [N_MESES_SPI...] [--var VARIABLE] [--out PREFIXO_DE_SAIDA]
+   ./calcula_spi.sh [ARQUIVO_CTL_ENTRADA] [N_MESES_SPI...] [--var VARIABLE] [--out PREFIXO_DE_SAIDA] [--silent]
    ```
 
    > **Atenção**: Este script deve ser executado na **Chagos**. Ele não funciona na minha máquina local.
@@ -75,20 +77,21 @@ O fluxo do programa é o seguinte:
    **Exemplo de saída:**
 
    ```
-   Uso: ./calcula_spi.sh [Arq .ctl] [Nº de meses...] [--var VARIABLE] [--out PREFIX]
+   Uso: ./calcula_spi.sh [Arq .ctl] [Nº de meses...] [--var VARIABLE] [--out PREFIX] [-s]
       Esse script calcula o SPI a partir de um arquivo .ctl
       O script gera um arquivo .bin e um arquivo .ctl com a variável 'spi'
    ATENÇÃO! Rode na Chagos. Na minha máquina local não funciona.
    Opções:
-   -h, --help			Mostra essa mensagem de ajuda e sai
-   --var VARIABLE, -v VARIABLE	(Opcional) Especifica a variável a ser processada (padrão 'cxc')
-   --out DIR, -o DIR		(Opcional) Especifica o diretório de saída (padrão: diretório atual com prefixo 'saida_')
+   -h, --help                    Mostra essa mensagem de ajuda e sai
+   --var VARIABLE, -v VARIABLE   (Opcional) Especifica a variável a ser processada (padrão 'cxc')
+   --out DIR, -o DIR             (Opcional) Especifica o diretório de saída (padrão: diretório atual com prefixo 'saida_')
+   -s, --silent                  (Recomendado) Modo silencioso - reduz a saída de mensagens
    Exemplo:
-   ./calcula_spi.sh ./arquivos/precipitacao.ctl 3 6 9 12 --var cxc --out resultado_
+   ./calcula_spi.sh ./arquivos/precipitacao.ctl 3 6 9 12 --var cxc --out resultado_ -s
    ```
 
 4. **Arquivos Gerados**:
-   - **Saída**: Os arquivos CTL e Bin contendo os resultados do Calculo SPI serão gerados no diretório de saída especificado. Caso não especificado, no diretório onde foi chamado o script, com o prefixo `saida_`)
+   - **Saída**: Os arquivos CTL e Bin contendo os resultados do Calculo SPI serão gerados no diretório de saída especificado. Caso não especificado, no diretório onde foi chamado o script, com o prefixo `saida_`.
    - **Arquivo de Controle**: Arquivos `.ctl` ajustados serão gerados, com a variável `spi` no lugar da variável especificada.
 
 5. **Diretórios de Entrada e Saída**:
