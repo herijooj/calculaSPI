@@ -26,23 +26,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Função de ajuda
 function show_help() {
-    echo -e "${YELLOW}Uso:${NC} ${GREEN}./calcula_spi.sh${NC} ${BLUE}[Arq .ctl]${NC} ${BLUE}[Nº de meses...]${NC} ${GREEN}[--var VARIABLE]${NC} ${GREEN}[--out-prefix PREFIX]${NC}"
-    echo -e "Esse script calcula o SPI a partir de um arquivo .ctl"
-    echo -e "O arquivo .ctl deve conter a variável especificada (padrão 'cxc')."
-    echo -e "O script gera um arquivo .bin e um arquivo .ctl com a variável 'spi'"
-    echo -e "Tome cuidado com o nome do arquivo de entrada, o script é sensível a isso."
+    echo -e "${YELLOW}Uso:${NC} ${GREEN}./calcula_spi.sh${NC} ${BLUE}[Arq .ctl]${NC} ${BLUE}[Nº de meses...]${NC} ${GREEN}[--var VARIABLE]${NC} ${GREEN}[--out PREFIX]${NC}"
+    echo -e "   Esse script calcula o SPI a partir de um arquivo .ctl"
+    echo -e "   O script gera um arquivo .bin e um arquivo .ctl com a variável 'spi'"
     echo -e "${RED}ATENÇÃO!${NC} Rode na Chagos. Na minha máquina local não funciona."
     echo -e "${YELLOW}Opções:${NC}"
-    echo -e "  ${GREEN}-h${NC}, ${GREEN}--help${NC}\t\tMostra essa mensagem de ajuda e sai"
-    echo -e "  ${GREEN}--var VARIABLE${NC}\t\tEspecifica a variável a ser processada (padrão 'cxc')"
-    echo -e "  ${GREEN}--out-prefix PREFIX${NC}\tEspecifica o prefixo do diretório de saída (padrão 'saida_')"
+    echo -e "  ${GREEN}-h${NC}, ${GREEN}--help${NC}\t\t\tMostra essa mensagem de ajuda e sai"
+    echo -e "  ${GREEN}--var VARIABLE${NC}, ${GREEN}-v VARIABLE${NC}\tEspecifica a variável a ser processada (padrão 'cxc')"
+    echo -e "  ${GREEN}--out DIR${NC}, ${GREEN}-o DIR${NC}\t\tEspecifica o diretório de saída (padrão: diretório atual com prefixo 'saida_')"
     echo -e "${YELLOW}Exemplo:${NC}"
-    echo -e "  ${GREEN}./calcula_spi.sh${NC} ${BLUE}./arquivos/precipitacao.ctl${NC} ${BLUE}3 6 9 12${NC} ${GREEN}--var cxc${NC} ${GREEN}--out-prefix resultado_${NC}"
+    echo -e "  ${GREEN}./calcula_spi.sh${NC} ${BLUE}./arquivos/precipitacao.ctl${NC} ${BLUE}3 6 9 12${NC} ${GREEN}--var cxc${NC} ${GREEN}--out resultado_${NC}"
 }
 
 # Inicializa a variável de nome de variável padrão
 VARIABLE_NAME="cxc"
-OUT_PREFIX="saida_"
 
 # Inicializa as variáveis
 CTL_IN=""
@@ -55,13 +52,19 @@ while [[ "$#" -gt 0 ]]; do
             show_help
             exit 0
             ;;
-        --var)
+        --var|-v)
             VARIABLE_NAME="$2"
             shift 2
             ;;
-        --out-prefix)
-            OUT_PREFIX="$2"
-            shift 2
+        --out|-o)
+            if [[ -n "$2" && "$2" != -* ]]; then
+                OUT_DIR="$2"
+                shift 2
+            else
+                echo -e "${RED}ERRO!${NC} A opção '--out' requer um diretório."
+                show_help
+                exit 1
+            fi
             ;;
         -*)
             echo -e "${RED}Opção desconhecida:${NC} $1"
@@ -98,14 +101,23 @@ if [[ ! -f "${CTL_IN}" ]]; then
     exit 1
 fi
 
+echo -e "${GREEN}SPI's: ${NC} ${BLUE}${N_MESES_SPI_LIST[@]}${NC}"
 echo -e "${GREEN}CTL_IN:${NC} ${BLUE}${CTL_IN}${NC}"
-FILE_NAME=$(basename "$CTL_IN" .ctl)
 
-# Removemos a verificação do comprimento do nome do arquivo
-# if [[ ${#FILE_NAME} -lt 2 ]]; then
-#     echo -e "${RED}ERRO!${NC} O nome do arquivo de entrada deve conter mais de uma letra."
-#     exit 1
-# fi
+# Definir DIR_IN e PREFIXO aqui, após garantir que CTL_IN existe
+DIR_IN=$(cd "$(dirname "${CTL_IN}")" && pwd)
+CTL_BASENAME=$(basename "${CTL_IN}")
+PREFIXO=$(basename "${CTL_BASENAME}" .ctl)
+
+# se OUT_DIR não foi especificado, use o diretório atual com prefixo 'saida_'
+if [[ -z "$OUT_DIR" ]]; then
+    OUT_DIR="${DIR_IN%/}/saida_${PREFIXO}"
+fi
+
+# Verifica se o diretório de saída existe; se não, cria
+if [[ ! -d "${OUT_DIR}" ]]; then
+    mkdir -p "${OUT_DIR}"
+fi
 
 # Função para analisar o arquivo .ctl
 parse_ctl_file() {
@@ -132,8 +144,16 @@ parse_ctl_file() {
             NY=${BASH_REMATCH[1]}
         elif [[ "$line" =~ ^tdef[[:space:]]+([0-9]+)[[:space:]]+.* ]]; then
             NT=${BASH_REMATCH[1]}
-        elif [[ "$line" =~ ^dset[[:space:]]+\^*(.*) ]]; then
-            DSET=${BASH_REMATCH[1]}
+        elif [[ "$line" =~ ^dset[[:space:]]+(\^*)(.*) ]]; then
+            DSET="${line#dset }"
+            if [[ "${BASH_REMATCH[1]}" == "^" ]]; then
+                DSET_DIR="${DIR_IN}"
+                DSET_FILE="${BASH_REMATCH[2]}"
+            else
+                DSET_PATH="${BASH_REMATCH[2]}"
+                DSET_DIR=$(dirname "${DSET_PATH}")
+                DSET_FILE=$(basename "${DSET_PATH}")
+            fi
         elif [[ "$line" =~ ^vars[[:space:]]+ ]]; then
             IN_VARS_BLOCK=true
         elif [[ "$line" =~ ^endvars ]]; then
@@ -147,7 +167,8 @@ parse_ctl_file() {
     done < "${ctl_file}"
 }
 
-parse_ctl_file "${CTL_IN}"
+# Chamar parse_ctl_file com o caminho completo do arquivo .ctl
+parse_ctl_file "${DIR_IN}/${CTL_BASENAME}"
 
 # Verifica se as dimensões foram encontradas
 if [[ -z "$NX" || -z "$NY" || -z "$NT" ]]; then
@@ -161,32 +182,22 @@ if [[ ! " ${VARIABLES[@]} " =~ " ${VARIABLE_NAME} " ]]; then
     exit 1
 fi
 
-# Verifica se o arquivo binário existe
-PREFIXO=$(basename "${CTL_IN}" .ctl)
-DIR_IN=$(cd "$(dirname "${CTL_IN}")" && pwd)
+# Determinar o caminho completo do arquivo binário de entrada:
+ARQ_BIN_IN="${DSET_DIR}/${DSET_FILE}"
+echo -e "${GREEN}BIN_IN:${NC} ${BLUE}${ARQ_BIN_IN}${NC}"
 
-if [[ ! -f "${DIR_IN}/${PREFIXO}.bin" ]]; then
-    echo -e "${RED}ERRO!${NC} O arquivo binário ${DIR_IN}/${PREFIXO}.bin não existe."
+# Verificar se o arquivo binário existe:
+if [[ ! -f "${ARQ_BIN_IN}" ]]; then
+    echo -e "${RED}ERRO!${NC} O arquivo binário ${ARQ_BIN_IN} não existe."
     exit 1
-fi
-
-# Usa o prefixo de saída especificado
-DIR_OUT="${DIR_IN}/${OUT_PREFIX}${PREFIXO}"
-CTL_IN=$(basename "${CTL_IN}")
-if [[ ! -e "${DIR_OUT}" ]]; then
-    mkdir "${DIR_OUT}"
 fi
 
 # Cria diretório temporário
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf -- "$TEMP_DIR"' EXIT
 
-# Copia arquivos de entrada para o diretório temporário
-cp "${DIR_IN}/${PREFIXO}.bin" "${TEMP_DIR}/"
-cp "${DIR_IN}/${CTL_IN}" "${TEMP_DIR}/"
-
 # Converte para NetCDF no diretório temporário
-cdo -f nc import_binary "${TEMP_DIR}/${CTL_IN}" "${TEMP_DIR}/${PREFIXO}.nc"
+cdo -f nc import_binary "${DIR_IN}/${CTL_BASENAME}" "${TEMP_DIR}/${PREFIXO}.nc"
 
 # Define variáveis de ambiente para apontar para o diretório temporário
 export DIRIN="${TEMP_DIR}/"
@@ -204,38 +215,34 @@ for N_MESES_SPI in "${N_MESES_SPI_LIST[@]}"; do
     ncl "${SCRIPT_DIR}/src/calcula_spi.ncl"
 
     # Move resultado para o destino final
-    mv "${TEMP_DIR}/${PREFIXO}_${N_MESES_SPI}.txt" "${DIR_OUT}/"
+    mv "${TEMP_DIR}/${PREFIXO}_${N_MESES_SPI}.txt" "${TEMP_DIR}/saida_${N_MESES_SPI}.txt"
 
-    if [[ ! -e "${DIR_OUT}/${PREFIXO}_${N_MESES_SPI}.txt" ]]; then
+    if [[ ! -e "${TEMP_DIR}/saida_${N_MESES_SPI}.txt" ]]; then
         echo -e "${RED}ERRO!${NC} O arquivo de saída não foi gerado."
         exit 1
     fi
 
     # Chamar o script Python para converter o arquivo
     echo -e "${GREEN}Convertendo o arquivo para bin...${NC}"
-    python3 "${SCRIPT_DIR}/src/converte_txt_bin.py" "${DIR_OUT}/${PREFIXO}_${N_MESES_SPI}.txt" "${DIR_OUT}/${PREFIXO}_spi${N_MESES_SPI}.bin" "${NX}" "${NY}" "${NT}"
+    python3 "${SCRIPT_DIR}/src/converte_txt_bin.py" "${TEMP_DIR}/saida_${N_MESES_SPI}.txt" "${OUT_DIR}/${PREFIXO}_spi${N_MESES_SPI}.bin" "${NX}" "${NY}" "${NT}"
 
-    echo -e "${GREEN}Escrevendo arquivo CTL...${NC}"
-    ARQ_BIN_IN="${DSET}"
-    ARQ_BIN_OUT="${PREFIXO}_spi${N_MESES_SPI}.bin"
-    CTL_OUT="${PREFIXO}_spi${N_MESES_SPI}.ctl"
+    echo -e "${GREEN}Escrevendo arquivo CTL e BIN...${NC}"
+    CTL_OUT="${OUT_DIR%/}/${PREFIXO}_spi${N_MESES_SPI}.ctl"
 
-    cp "${DIR_IN}/${CTL_IN}" "${DIR_OUT}/${CTL_OUT}"
-
-    # Escapa caracteres especiais em ARQ_BIN_IN e ARQ_BIN_OUT
-    ARQ_BIN_IN_ESCAPED=$(printf '%s' "$(basename "$ARQ_BIN_IN")" | sed 's/[.[\*^$(){}+?|]/\\&/g')
-    ARQ_BIN_OUT_ESCAPED=$(printf '%s' "$(basename "$ARQ_BIN_OUT")" | sed 's/[.[\*^$(){}+?|]/\\&/g')
-
-    # Substituir apenas o nome do arquivo após '^' na linha que começa com 'dset'
-    sed -i "/^dset/s#\^${ARQ_BIN_IN_ESCAPED}#^${ARQ_BIN_OUT_ESCAPED}#g" "${DIR_OUT}/${CTL_OUT}"
+    cp "${DIR_IN}/${CTL_BASENAME}" "${CTL_OUT}"
+    echo -e "${GREEN}DIR_OUT:${NC} ${BLUE}${OUT_DIR}${NC}"
+    
+    # Ajustar a substituição no arquivo .ctl de saída
+    # Sempre usar '^' seguido do nome do novo arquivo binário
+    sed -i "/^dset/s#^dset.*#dset \^${PREFIXO}_spi${N_MESES_SPI}.bin#g" "${CTL_OUT}"
 
     # Substituir a variável especificada por 'spi' entre 'vars' e 'endvars'
     sed -i "/^vars/,/^endvars/{
         s/^\(${VARIABLE_NAME}\(\s*=>\s*[^[:space:]]*\)\?\)\(\s.*\)/spi\3/
-    }" "${DIR_OUT}/${CTL_OUT}"
+    }" "${CTL_OUT}"
 
     echo -e "${GREEN}Limpando arquivos temporários...${NC}"
-    rm "${DIR_OUT}/${PREFIXO}_${N_MESES_SPI}.txt"
+    rm "${TEMP_DIR}/saida_${N_MESES_SPI}.txt"
 
 done
 
