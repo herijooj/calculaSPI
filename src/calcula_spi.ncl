@@ -12,7 +12,6 @@ begin
   prefixo = getenv("PREFIXO")
   nMesesSpi = toint(getenv("N_MESES_SPI"))
   variable_name = getenv("VARIABLE_NAME")
-  silentMode = toint(getenv("SILENT_MODE"))
 
   ; Verifica se nMesesSpi é um número válido
   if (ismissing(nMesesSpi)) then
@@ -26,11 +25,6 @@ begin
   ; Lê a variável especificada
   prc = flt2dble(f->$variable_name$)
   pmsg = prc@_FillValue
-
-  if (silentMode .eq. 0) then
-    printVarSummary(prc)
-    printMinMax(prc, 0)
-  end if
   
   dimprc = dimsizes(prc)
   mlon = dimprc(0)

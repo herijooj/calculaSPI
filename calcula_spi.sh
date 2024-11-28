@@ -218,14 +218,13 @@ export FILEIN="${PREFIXO}.nc"
 export PREFIXO="${PREFIXO}"
 export VARIABLE_NAME="${VARIABLE_NAME}"
 
-# não usa string, usa um número
-if [ "$SILENT_MODE" = true ]; then
-    SILENT_MODE=1
-else
-    SILENT_MODE=0
+
+if [ "$SILENT_MODE" = false ]; then
+    echo -e "${GREEN}Detalhes:${NC}"
+    ncl $NCL_OPTS "${SCRIPT_DIR}/src/resumo_spi.ncl"
+    echo ""
 fi
 
-export SILENT_MODE="$SILENT_MODE"
 
 # Loop sobre cada valor de N_MESES_SPI em paralelo
 for N_MESES_SPI in "${N_MESES_SPI_LIST[@]}"; do
@@ -233,22 +232,22 @@ for N_MESES_SPI in "${N_MESES_SPI_LIST[@]}"; do
         export N_MESES_SPI="${N_MESES_SPI}"
 
         # Executando o script NCL para calcular o SPI
-        echo -e "${GREEN}Calculando o SPI para N_MESES_SPI=${N_MESES_SPI}...${NC}"
-        ncl $NCL_OPTS "${SCRIPT_DIR}/src/calcula_spi.ncl"
+        echo -e "${GREEN}Calculando o SPI ${N_MESES_SPI}...${NC}"
+        ncl -Q "${SCRIPT_DIR}/src/calcula_spi.ncl" # silent by default
 
         # Move resultado para o destino final
         mv "${TEMP_DIR}/${PREFIXO}_${N_MESES_SPI}.txt" "${TEMP_DIR}/saida_${N_MESES_SPI}.txt"
 
         if [[ ! -e "${TEMP_DIR}/saida_${N_MESES_SPI}.txt" ]]; then
-            echo -e "${RED}ERRO!${NC} O arquivo de saída para N_MESES_SPI=${N_MESES_SPI} não foi gerado."
+            echo -e "${RED}ERRO!${NC} O arquivo de saída para o SPI ${N_MESES_SPI} não foi gerado."
             exit 1
         fi
 
         # Chamar o script Python para converter o arquivo
-        echo -e "${GREEN}Convertendo o arquivo .txt para .bin para N_MESES_SPI=${N_MESES_SPI}...${NC}"
+        echo -e "${GREEN}Convertendo o arquivo .txt para .bin para o SPI ${N_MESES_SPI}...${NC}"
         python3 "${SCRIPT_DIR}/src/converte_txt_bin.py" "${TEMP_DIR}/saida_${N_MESES_SPI}.txt" "${OUT_DIR}/${PREFIXO}_spi${N_MESES_SPI}.bin" "${NX}" "${NY}" "${NT}"
 
-        echo -e "${GREEN}Escrevendo arquivo CTL e BIN para N_MESES_SPI=${N_MESES_SPI}...${NC}"
+        echo -e "${GREEN}Escrevendo arquivo CTL e BIN para O SPI ${N_MESES_SPI}...${NC}"
         CTL_OUT="${OUT_DIR%/}/${PREFIXO}_spi${N_MESES_SPI}.ctl"
 
         cp "${DIR_IN}/${CTL_BASENAME}" "${CTL_OUT}"
