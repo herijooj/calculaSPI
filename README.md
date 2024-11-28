@@ -18,8 +18,8 @@
    - Melhorias no parsing do arquivo `.ctl`
    - Possibilidade de especificar a variável a ser processada com `--var`
    - Correção de substituições no `sed` para evitar substituições indesejadas
-   - Suporte a nomes de arquivos com um único caractere
-   - Adicionada opção para definir o prefixo do diretório de saída com `--out-prefix`
+   - Suporte a nomes de arquivos com um único caractere ou caracteres especiais
+   - Adicionada opção para definir o prefixo do diretório de saída com `--out`
 
 Este conjunto de programas calcula o **Standardized Precipitation Index (SPI)** a partir de uma série de dados de precipitação mensal, utilizando uma abordagem em etapas que inclui a conversão de formatos de dados e o cálculo do SPI com o uso de **NCL** (NCAR Command Language) e **Python**.
 
@@ -48,7 +48,7 @@ O fluxo do programa é o seguinte:
    No terminal, execute o comando:
 
    ```bash
-   ./calcula_spi.sh [ARQUIVO_CTL_ENTRADA] [N_MESES_SPI...] [--var VARIABLE] [--out-prefix PREFIXO_DE_SAIDA]
+   ./calcula_spi.sh [ARQUIVO_CTL_ENTRADA] [N_MESES_SPI...] [--var VARIABLE] [--out PREFIXO_DE_SAIDA]
    ```
 
    > **Atenção**: Este script deve ser executado na **Chagos**. Ele não funciona na minha máquina local.
@@ -57,7 +57,7 @@ O fluxo do programa é o seguinte:
    - `[ARQUIVO_CTL_ENTRADA]` pelo caminho do arquivo `.ctl` que contém os dados de precipitação.
    - `[N_MESES_SPI...]` pelos números de meses a serem usados para o cálculo do SPI (ex: 3 6 9 12).
    - `--var VARIABLE` (opcional) para especificar a variável a ser processada (padrão é `cxc`).
-   - `--out-prefix PREFIXO_DE_SAIDA` (opcional) para especificar o prefixo do diretório de saída (padrão é `saida_`).
+   - `--out PREFIXO_DE_SAIDA` (opcional) para especificar o prefixo do diretório de saída (padrão é `saida_`).
 
    O script vai realizar as seguintes etapas:
    - **Conversão**: O arquivo `.ctl` será convertido para `.nc`.
@@ -75,27 +75,25 @@ O fluxo do programa é o seguinte:
    **Exemplo de saída:**
 
    ```
-   Uso: ./calcula_spi.sh [Arq .ctl] [Nº de meses...] [--var VARIABLE] [--out-prefix PREFIX]
-   Esse script calcula o SPI a partir de um arquivo .ctl
-   O arquivo .ctl deve conter a variável especificada (padrão 'cxc').
-   O script gera um arquivo .bin e um arquivo .ctl com a variável 'spi'
-   Tome cuidado com o nome do arquivo de entrada, o script é sensível a isso.
+   Uso: ./calcula_spi.sh [Arq .ctl] [Nº de meses...] [--var VARIABLE] [--out PREFIX]
+      Esse script calcula o SPI a partir de um arquivo .ctl
+      O script gera um arquivo .bin e um arquivo .ctl com a variável 'spi'
    ATENÇÃO! Rode na Chagos. Na minha máquina local não funciona.
    Opções:
-     -h, --help               Mostra essa mensagem de ajuda e sai
-     --var VARIABLE           Especifica a variável a ser processada (padrão 'cxc')
-     --out-prefix PREFIX      Especifica o prefixo do diretório de saída (padrão 'saida_')
+   -h, --help			Mostra essa mensagem de ajuda e sai
+   --var VARIABLE, -v VARIABLE	(Opcional) Especifica a variável a ser processada (padrão 'cxc')
+   --out DIR, -o DIR		(Opcional) Especifica o diretório de saída (padrão: diretório atual com prefixo 'saida_')
    Exemplo:
-     ./calcula_spi.sh ./arquivos/precipitacao.ctl 3 6 9 12 --var cxc --out-prefix resultado_
+   ./calcula_spi.sh ./arquivos/precipitacao.ctl 3 6 9 12 --var cxc --out resultado_
    ```
 
 4. **Arquivos Gerados**:
-   - **Saída em Binário**: Os arquivos binários contendo os resultados do SPI serão gerados no diretório de saída especificado.
+   - **Saída**: Os arquivos CTL e Bin contendo os resultados do Calculo SPI serão gerados no diretório de saída especificado. Caso não especificado, no diretório onde foi chamado o script, com o prefixo `saida_`)
    - **Arquivo de Controle**: Arquivos `.ctl` ajustados serão gerados, com a variável `spi` no lugar da variável especificada.
 
 5. **Diretórios de Entrada e Saída**:
    - O programa cria um diretório de saída chamado `[PREFIXO_DE_SAIDA][NOME_ARQUIVO]` dentro do diretório de entrada para armazenar os arquivos gerados.
-     - O prefixo de saída padrão é `saida_`, mas pode ser alterado com a opção `--out-prefix`.
+     - O prefixo de saída padrão é `saida_`, mas pode ser alterado com a opção `--out`.
 
 ## Detalhes de Implementação
 
@@ -114,7 +112,7 @@ O fluxo do programa é o seguinte:
 ## Exemplo de Execução para Vários Meses
 
 ```bash
-./calcula_spi.sh /dados/entrada/precipitacao.ctl 3 6 9 12 --var precip --out-prefix resultado_
+./calcula_spi.sh /dados/entrada/precipitacao.ctl 3 6 9 12 --var precip --out ./resultado_
 ```
 
 Nesse exemplo:

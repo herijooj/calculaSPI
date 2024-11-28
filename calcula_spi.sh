@@ -32,8 +32,8 @@ function show_help() {
     echo -e "${RED}ATENÇÃO!${NC} Rode na Chagos. Na minha máquina local não funciona."
     echo -e "${YELLOW}Opções:${NC}"
     echo -e "  ${GREEN}-h${NC}, ${GREEN}--help${NC}\t\t\tMostra essa mensagem de ajuda e sai"
-    echo -e "  ${GREEN}--var VARIABLE${NC}, ${GREEN}-v VARIABLE${NC}\tEspecifica a variável a ser processada (padrão 'cxc')"
-    echo -e "  ${GREEN}--out DIR${NC}, ${GREEN}-o DIR${NC}\t\tEspecifica o diretório de saída (padrão: diretório atual com prefixo 'saida_')"
+    echo -e "  ${GREEN}--var VARIABLE${NC}, ${GREEN}-v VARIABLE${NC}\t(Opcional) Especifica a variável a ser processada (padrão 'cxc')"
+    echo -e "  ${GREEN}--out DIR${NC}, ${GREEN}-o DIR${NC}\t\t(Opcional) Especifica o diretório de saída (padrão: diretório atual com prefixo 'saida_')"
     echo -e "${YELLOW}Exemplo:${NC}"
     echo -e "  ${GREEN}./calcula_spi.sh${NC} ${BLUE}./arquivos/precipitacao.ctl${NC} ${BLUE}3 6 9 12${NC} ${GREEN}--var cxc${NC} ${GREEN}--out resultado_${NC}"
 }
