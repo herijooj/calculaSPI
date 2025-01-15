@@ -35,6 +35,8 @@ function show_help() {
     echo -e "  ${GREEN}--var VARIABLE${NC}, ${GREEN}-v VARIABLE${NC}\t(Opcional) Especifica a variável a ser processada (padrão 'cxc' ou 'precip')"
     echo -e "  ${GREEN}--out DIR${NC}, ${GREEN}-o DIR${NC}\t\t(Opcional) Especifica o diretório de saída (padrão: diretório atual com prefixo 'saida_')"
     echo -e "  ${GREEN}-s${NC}, ${GREEN}--silent${NC}\t\t\t(Recomendado) Modo silencioso - reduz a saída de mensagens"
+    echo -e "${YELLOW}Nota:${NC}"
+    echo -e "  Se não especificar os meses, serão usados: 1 3 6 9 12 24 48 60"
     echo -e "${YELLOW}Exemplo:${NC}"
     echo -e "  ${GREEN}./calcula_spi.sh${NC} ${BLUE}./arquivos/precipitacao.ctl${NC} ${BLUE}3 6 9 12${NC} ${GREEN}--var precip${NC} ${GREEN}--out resultado_${NC} ${GREEN}-s${NC}"
 }
@@ -96,9 +98,8 @@ fi
 
 # Verifica se pelo menos um número de meses foi especificado
 if [[ ${#N_MESES_SPI_LIST[@]} -eq 0 ]]; then
-    echo -e "${RED}ERRO!${NC} Nenhum número de meses foi especificado."
-    show_help
-    exit 1
+    # Use os meses padrão se nenhum for especificado
+    N_MESES_SPI_LIST=(1 3 6 9 12 24 48 60)
 fi
 
 # Verifica se o arquivo .ctl existe
