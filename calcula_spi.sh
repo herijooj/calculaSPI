@@ -1,3 +1,4 @@
+      
 #!/bin/bash
 # calcula_spi.sh
 
@@ -13,6 +14,7 @@ set_colors() {
     YELLOW='\033[1;93m'     # Amarelo claro
     BLUE='\033[1;36m'       # Azul claro ciano
     NC='\033[0m'            # Sem cor (reset)
+    BOLD='\033[1m'           # Negrito
 }
 
 # Testa se está em um terminal para exibir cores
@@ -32,7 +34,7 @@ function show_help() {
     echo -e "${RED}ATENÇÃO!${NC} Rode na Chagos. Na minha máquina local não funciona."
     echo -e "${YELLOW}Opções:${NC}"
     echo -e "  ${GREEN}-h${NC}, ${GREEN}--help${NC}\t\t\tMostra essa mensagem de ajuda e sai"
-    echo -e "  ${GREEN}--var VARIABLE${NC}, ${GREEN}-v VARIABLE${NC}\t(Opcional) Especifica a variável a ser processada (padrão 'cxc' ou 'precip')"
+    echo -e "  ${GREEN}--var VARIABLE${NC}, ${GREEN}-v VARIABLE${NC}\t(Opcional) Especifica a variável a ser processada (padrão 'cxc' ou 'precip' ou 'pr')"
     echo -e "  ${GREEN}--out DIR${NC}, ${GREEN}-o DIR${NC}\t\t(Opcional) Especifica o diretório de saída (padrão: diretório atual com prefixo 'saida_')"
     echo -e "  ${GREEN}-s${NC}, ${GREEN}--silent${NC}\t\t\t(Recomendado) Modo silencioso - reduz a saída de mensagens"
     echo -e "  ${GREEN}-w${NC}, ${GREEN}--workers NUM${NC}\t\t(Opcional) Número máximo de processos paralelos (padrão: 4)"
@@ -74,7 +76,7 @@ while [[ "$#" -gt 0 ]]; do
                 OUT_DIR="$2"
                 shift 2
             else
-                echo -e "${RED}ERRO!${NC} A opção '--out' requer um diretório."
+                echo -e "${RED}ERRO: ${NC}A opção '--out' requer um diretório."
                 show_help
                 exit 1
             fi
@@ -84,13 +86,13 @@ while [[ "$#" -gt 0 ]]; do
                 MAX_WORKERS="$2"
                 shift 2
             else
-                echo -e "${RED}ERRO!${NC} A opção '--workers' requer um número."
+                echo -e "${RED}ERRO: ${NC}A opção '--workers' requer um número."
                 show_help
                 exit 1
             fi
             ;;
         -*)
-            echo -e "${RED}Opção desconhecida:${NC} $1"
+            echo -e "${RED}ERRO: ${NC}Opção desconhecida: $1"
             exit 1
             ;;
         *)
@@ -106,7 +108,7 @@ done
 
 # Verifica se o arquivo .ctl foi especificado
 if [[ -z "$CTL_IN" ]]; then
-    echo -e "${RED}ERRO!${NC} O arquivo .ctl não foi especificado."
+    echo -e "${RED}ERRO: ${NC}O arquivo .ctl não foi especificado."
     show_help
     exit 1
 fi
@@ -119,12 +121,15 @@ fi
 
 # Verifica se o arquivo .ctl existe
 if [[ ! -f "${CTL_IN}" ]]; then
-    echo -e "${RED}ERRO!${NC} O arquivo ${CTL_IN} não existe."
+    echo -e "${RED}ERRO: ${NC}O arquivo ${CTL_IN} não existe."
     exit 1
 fi
 
-echo -e "${GREEN}SPI's: ${NC} ${BLUE}${N_MESES_SPI_LIST[@]}${NC}"
-echo -e "${GREEN}CTL_IN:${NC} ${BLUE}${CTL_IN}${NC}"
+if [ "$SILENT_MODE" = false ]; then
+    echo -e "${GREEN}${BOLD}Configurações do SPI:${NC} ${BLUE}${N_MESES_SPI_LIST[@]}${NC}"
+    echo -e "${GREEN}Arquivo CTL de entrada:${NC} ${BLUE}${CTL_IN}${NC}"
+fi
+
 
 # Definir DIR_IN e PREFIXO aqui, após garantir que CTL_IN existe
 DIR_IN=$(cd "$(dirname "${CTL_IN}")" && pwd)
@@ -147,23 +152,32 @@ monitor_resources() {
     local pid=$1
     local total_jobs=$2
     local start_time=$(date +%s)
-    local check_interval=2  # Reduz frequência de checagem
+    local check_interval=5  # More relaxed interval
 
     echo ""
     while kill -0 $pid 2>/dev/null; do
-        # Usa ps uma única vez e armazena resultado
-        local ps_output=$(ps --forest -o pid,%cpu,%mem,cmd -g $(ps -o sid= -p $$))
-        local cpu_mem=$(echo "$ps_output" | awk 'NR>1 {cpu+=$2; mem+=$3} END {print cpu,mem}')
-        
-        # Cache do progresso
-        if [[ $(($(date +%s) % check_interval)) -eq 0 ]]; then
-            completed_jobs=$(find "${TEMP_DIR}" -name "saida_*.txt" | wc -l)
-        fi
-        
+        # Somamos CPU e MEM de todos os processos no mesmo SID
+        local ps_output=$(ps --no-headers -o %cpu,%mem -g $(ps -o sid= -p "$pid"))
+        local raw_values=($ps_output)
+        local total_cpu=0
+        local total_mem=0
+        for ((i=0; i<${#raw_values[@]}; i+=2)); do
+            total_cpu=$(awk "BEGIN {print $total_cpu+${raw_values[i]}}")
+            total_mem=$(awk "BEGIN {print $total_mem+${raw_values[i+1]}}")
+        done
+
+        # Cache do progresso - simpler approach
+        completed_jobs=0
+        for month in "${N_MESES_SPI_LIST[@]}"; do
+            if [[ -f "${TEMP_DIR}/saida_${month}.txt" ]]; then
+                ((completed_jobs++))
+            fi
+        done
+
         # Calculate progress
         local progress=$((completed_jobs * 100 / total_jobs))
         local elapsed=$(($(date +%s) - start_time))
-        
+
         # Create progress bar
         local bar_size=30
         local filled=$((progress * bar_size / 100))
@@ -175,11 +189,11 @@ monitor_resources() {
         # Move cursor up one line and clear it
         echo -en "\033[1A\033[K"
         # Show progress
-        echo -ne "${BLUE}Progresso: [${bar}] ${progress}% "
+        echo -ne "${BLUE}Progresso Geral: [${bar}] ${progress}% "
         echo -ne "CPU: ${total_cpu}% MEM: ${total_mem}% "
-        echo -ne "Tempo: ${elapsed}s${NC}"
+        echo -ne "Tempo Decorrido: ${elapsed}s${NC}"
         echo # New line to maintain space
-        
+
         sleep $check_interval
     done
 }
@@ -196,10 +210,11 @@ parse_ctl_file() {
     IN_VARS_BLOCK=false
 
     while read -r line; do
-        # Remove espaços em branco no início e no fim
+        # Remove espaços em branco no início e no fim and comments more robustly
+        line="$(sed -e 's/#.*$//' <<<"$line")" # Remove comments after #
         line="$(echo -e "${line}" | sed -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-        # Ignora linhas vazias ou comentários
-        if [[ -z "$line" || "$line" =~ ^# ]]; then
+        # Ignora linhas vazias
+        if [[ -z "$line" ]]; then
             continue
         fi
 
@@ -237,7 +252,7 @@ parse_ctl_file "${DIR_IN}/${CTL_BASENAME}"
 
 # Verifica se as dimensões foram encontradas
 if [[ -z "$NX" || -z "$NY" || -z "$NT" ]]; then
-    echo -e "${RED}ERRO!${NC} Não foi possível obter as dimensões do arquivo ctl."
+    echo -e "${RED}ERRO: ${NC}Não foi possível obter as dimensões do arquivo ctl."
     exit 1
 fi
 
@@ -247,22 +262,27 @@ if [[ -z "$VARIABLE_NAME" ]]; then
         VARIABLE_NAME="cxc"
     elif [[ " ${VARIABLES[@]} " =~ " precip " ]]; then
         VARIABLE_NAME="precip"
+    elif [[ " ${VARIABLES[@]} " =~ " pr " ]]; then
+        VARIABLE_NAME="pr"
     else
-        echo -e "${RED}ERRO!${NC} O arquivo ctl não contém 'cxc' ou 'precip'."
+        echo -e "${RED}ERRO: ${NC}O arquivo ctl não contém 'cxc' ou 'precip' ou 'pr'."
         exit 1
     fi
 elif [[ ! " ${VARIABLES[@]} " =~ " ${VARIABLE_NAME} " ]]; then
-    echo -e "${RED}ERRO!${NC} O arquivo ctl deve conter a variável '${VARIABLE_NAME}'."
+    echo -e "${RED}ERRO: ${NC}O arquivo ctl deve conter a variável '${VARIABLE_NAME}'."
     exit 1
 fi
 
 # Determinar o caminho completo do arquivo binário de entrada:
 ARQ_BIN_IN="${DSET_DIR}/${DSET_FILE}"
-echo -e "${GREEN}BIN_IN:${NC} ${BLUE}${ARQ_BIN_IN}${NC}"
+if [ "$SILENT_MODE" = false ]; then
+    echo -e "${GREEN}Arquivo BIN de entrada:${NC} ${BLUE}${ARQ_BIN_IN}${NC}"
+fi
+
 
 # Verificar se o arquivo binário existe:
 if [[ ! -f "${ARQ_BIN_IN}" ]]; then
-    echo -e "${RED}ERRO!${NC} O arquivo binário ${ARQ_BIN_IN} não existe."
+    echo -e "${RED}ERRO: ${NC}O arquivo binário ${ARQ_BIN_IN} não existe."
     exit 1
 fi
 
@@ -274,9 +294,13 @@ trap 'rm -rf -- "$TEMP_DIR"' EXIT
 if [ "$SILENT_MODE" = true ]; then
     CDO_OPTS="-s"
     NCL_OPTS="-Q"
+else
+    CDO_OPTS=""
+    NCL_OPTS=""
+    echo -e "${GREEN}${BOLD}Passo 1: Convertendo BIN para NetCDF...${NC}"
 fi
 
-echo -e "${GREEN}Convertendo o arquivo binário para NetCDF...${NC}"
+
 (
     # Divide o arquivo em chunks e processa em paralelo
     cdo $CDO_OPTS -P $MAX_WORKERS -f nc import_binary "${DIR_IN}/${CTL_BASENAME}" "${TEMP_DIR}/${PREFIXO}.nc"
@@ -291,14 +315,20 @@ export VARIABLE_NAME="${VARIABLE_NAME}"
 
 
 if [ "$SILENT_MODE" = false ]; then
-    echo -e "${GREEN}Detalhes:${NC}"
+    echo -e "${GREEN}${BOLD}Passo 1 Concluído.${NC}\n"
+    echo -e "${GREEN}${BOLD}Detalhes do Processamento:${NC}"
+    echo -e "${GREEN}  Versão do CDO:${NC}"
     cdo -V 2>&1 | head -n 1 # CDO version
+    echo -e "${GREEN}  Resumo do arquivo de entrada (NCL):${NC}"
     ncl $NCL_OPTS "${SCRIPT_DIR}/src/resumo_spi.ncl" # Detalhes do arquivo de entrada
 fi
 
-if [ "$SILENT_MODE" = true ]; then
-    echo -e "${GREEN}Calculando os SPI's${NC} ${BLUE}${N_MESES_SPI_LIST[@]}${NC} ${GREEN}${NC}"
+if [ "$SILENT_MODE" = false ]; then
+    echo -e "${GREEN}${BOLD}Passo 2: Calculando os SPI's:${NC} ${BLUE}${N_MESES_SPI_LIST[@]}${NC}${GREEN}${NC}"
+elif [ "$SILENT_MODE" = true ]; then
+    echo -e "${GREEN}${BOLD}Calculando os SPI's:${NC} ${BLUE}${N_MESES_SPI_LIST[@]}${NC}${GREEN}${NC}"
 fi
+
 
 # Função para log seguro
 safe_echo() {
@@ -310,13 +340,19 @@ safe_echo() {
     echo ""
 }
 
+# Function to check if a file exists efficiently
+file_exists() {
+  [[ -f "$1" ]]
+}
+
+
 # Função para processar um único SPI
 process_spi() {
     local N_MESES_SPI=$1
     export N_MESES_SPI="${N_MESES_SPI}"
 
     if [ "$SILENT_MODE" = false ]; then
-        safe_echo "${GREEN}Calculando o SPI ${N_MESES_SPI}...${NC}"
+        safe_echo "${GREEN}  Calculando SPI-${N_MESES_SPI}...${NC}"
     fi
 
     # Executando o script NCL para calcular o SPI
@@ -325,38 +361,39 @@ process_spi() {
     # Move resultado para o destino final
     mv "${TEMP_DIR}/${PREFIXO}_${N_MESES_SPI}.txt" "${TEMP_DIR}/saida_${N_MESES_SPI}.txt"
 
-    if [[ ! -e "${TEMP_DIR}/saida_${N_MESES_SPI}.txt" ]]; then
-        safe_echo "${RED}ERRO!${NC} O arquivo de saída para o SPI ${N_MESES_SPI} não foi gerado."
+    if ! file_exists "${TEMP_DIR}/saida_${N_MESES_SPI}.txt"; then # More efficient file check
+        safe_echo "${RED}ERRO: ${NC}O arquivo de saída para o SPI-${N_MESES_SPI} não foi gerado."
         exit 1
     fi
 
     if [ "$SILENT_MODE" = false ]; then
-        safe_echo "${GREEN}Convertendo o arquivo .txt para .bin para o SPI ${N_MESES_SPI}...${NC}"
+        safe_echo "${GREEN}  Convertendo .txt para .bin para SPI-${N_MESES_SPI}...${NC}"
     fi
     python3 "${SCRIPT_DIR}/src/converte_txt_bin.py" "${TEMP_DIR}/saida_${N_MESES_SPI}.txt" "${OUT_DIR}/${PREFIXO}_spi${N_MESES_SPI}.bin" "${NX}" "${NY}" "${NT}"
 
     CTL_OUT="${OUT_DIR%/}/${PREFIXO}_spi${N_MESES_SPI}.ctl"
     if [ "$SILENT_MODE" = false ]; then
-        safe_echo "${GREEN}Copiando e ajustando o arquivo CTL Para o diretório final. ${N_MESES_SPI}...${NC}"
+        safe_echo "${GREEN}  Copiando e ajustando CTL para SPI-${N_MESES_SPI}...${NC}"
     fi
     cp "${DIR_IN}/${CTL_BASENAME}" "${CTL_OUT}"
-    
-    # Ajustar a substituição no arquivo .ctl de saída
+
+    # Ajustar a substituição no arquivo .ctl de saída - simpler sed if possible
     sed -i "/^dset/s#^dset.*#dset \^${PREFIXO}_spi${N_MESES_SPI}.bin#g" "${CTL_OUT}"
 
-    # Substituir a variável especificada por 'spi' entre 'vars' e 'endvars'
-    sed -i -E "/^vars/,/^endvars/{
-        s/^(${VARIABLE_NAME}([[:space:]]*=>[[:space:]]*[^[:space:]]*)?)([[:space:]].*)/spi\3/
+    # Substituir a variável especificada por 'spi' entre 'vars' e 'endvars' - simpler sed if possible
+    sed -i "/^vars/,/^endvars/{
+        s/${VARIABLE_NAME}[[:space:]]*=>[[:space:]]*[^[:space:]]*/spi/
+        s/${VARIABLE_NAME}[[:space:]]*/spi/
     }" "${CTL_OUT}"
 }
 
 # Função para processar os SPIs
 process_spis() {
     local job_queue=()
-    
+
     # Pré-aloca arrays para resultados
     declare -A job_status
-    
+
     for N_MESES_SPI in "${N_MESES_SPI_LIST[@]}"; do
         while [ ${#job_queue[@]} -ge $MAX_WORKERS ]; do
             for i in "${!job_queue[@]}"; do
@@ -368,28 +405,38 @@ process_spis() {
             job_queue=("${job_queue[@]}")
             [[ ${#job_queue[@]} -ge $MAX_WORKERS ]] && sleep 0.1
         done
-        
+
         process_spi "$N_MESES_SPI" &
         job_queue+=($!)
     done
-    echo -e ""    
+    echo -e ""
     # Espera todos os jobs terminarem
     wait
 }
 
 # Inicia o processamento com monitoramento
-echo -e "${GREEN}Iniciando processamento dos SPIs...${NC}"
+if [ "$SILENT_MODE" = false ]; then
+    echo -e "${GREEN}${BOLD}Passo 2: Iniciando o cálculo dos SPIs em paralelo...${NC}"
+fi
+
 (
     # Executa o processamento em background
     process_spis &
     MAIN_PID=$!
-    
+
     # Inicia o monitoramento
     monitor_resources $MAIN_PID ${#N_MESES_SPI_LIST[@]}
-    
+
     # Espera o processo principal terminar
     wait $MAIN_PID
 )
 
-echo -e "\n${GREEN}DIR_OUT:${NC} ${BLUE}${OUT_DIR}${NC}"
-echo -e "${GREEN}Processamento concluído!${NC}"
+if [ "$SILENT_MODE" = false ]; then
+    echo -e "${GREEN}${BOLD}Passo 2 Concluído.${NC}\n"
+    echo -e "${GREEN}${BOLD}Diretório de Saída:${NC} ${BLUE}${OUT_DIR}${NC}"
+    echo -e "${GREEN}${BOLD}Processamento Finalizado com Sucesso!${NC}"
+elif [ "$SILENT_MODE" = true ]; then
+    echo -e "${GREEN}Processamento concluído! Arquivos SPI gerados em: ${BLUE}${OUT_DIR}${NC}"
+fi
+
+    
