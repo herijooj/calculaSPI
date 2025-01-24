@@ -1,4 +1,3 @@
-      
 #!/bin/bash
 # calcula_spi.sh
 
@@ -146,58 +145,6 @@ if [[ ! -d "${OUT_DIR}" ]]; then
     mkdir -p "${OUT_DIR}"
 fi
 
-# Resource monitoring function
-declare -A completed_tasks
-monitor_resources() {
-    local pid=$1
-    local total_jobs=$2
-    local start_time=$(date +%s)
-    local check_interval=5  # More relaxed interval
-
-    echo ""
-    while kill -0 $pid 2>/dev/null; do
-        # Somamos CPU e MEM de todos os processos no mesmo SID
-        local ps_output=$(ps --no-headers -o %cpu,%mem -g $(ps -o sid= -p "$pid"))
-        local raw_values=($ps_output)
-        local total_cpu=0
-        local total_mem=0
-        for ((i=0; i<${#raw_values[@]}; i+=2)); do
-            total_cpu=$(awk "BEGIN {print $total_cpu+${raw_values[i]}}")
-            total_mem=$(awk "BEGIN {print $total_mem+${raw_values[i+1]}}")
-        done
-
-        # Cache do progresso - simpler approach
-        completed_jobs=0
-        for month in "${N_MESES_SPI_LIST[@]}"; do
-            if [[ -f "${TEMP_DIR}/saida_${month}.txt" ]]; then
-                ((completed_jobs++))
-            fi
-        done
-
-        # Calculate progress
-        local progress=$((completed_jobs * 100 / total_jobs))
-        local elapsed=$(($(date +%s) - start_time))
-
-        # Create progress bar
-        local bar_size=30
-        local filled=$((progress * bar_size / 100))
-        local empty=$((bar_size - filled))
-        local bar=""
-        for ((i=0; i<filled; i++)); do bar+="█"; done
-        for ((i=0; i<empty; i++)); do bar+="░"; done
-
-        # Move cursor up one line and clear it
-        echo -en "\033[1A\033[K"
-        # Show progress
-        echo -ne "${BLUE}Progresso Geral: [${bar}] ${progress}% "
-        echo -ne "CPU: ${total_cpu}% MEM: ${total_mem}% "
-        echo -ne "Tempo Decorrido: ${elapsed}s${NC}"
-        echo # New line to maintain space
-
-        sleep $check_interval
-    done
-}
-
 # Função para analisar o arquivo .ctl
 parse_ctl_file() {
     local ctl_file="$1"
@@ -308,7 +255,7 @@ fi
 
 # Define variáveis de ambiente para apontar para o diretório temporário
 export DIRIN="${TEMP_DIR}/"
-export DIROUT="${TEMP_DIR}/"
+export DIROUT="${OUT_DIR}/"
 export FILEIN="${PREFIXO}.nc"
 export PREFIXO="${PREFIXO}"
 export VARIABLE_NAME="${VARIABLE_NAME}"
@@ -354,82 +301,60 @@ process_spi() {
     if [ "$SILENT_MODE" = false ]; then
         safe_echo "${GREEN}  Calculando SPI-${N_MESES_SPI}...${NC}"
     fi
-
     # Executando o script NCL para calcular o SPI
     ncl -Q "${SCRIPT_DIR}/src/calcula_spi.ncl" # silent by default
 
-    # Move resultado para o destino final
-    mv "${TEMP_DIR}/${PREFIXO}_${N_MESES_SPI}.txt" "${TEMP_DIR}/saida_${N_MESES_SPI}.txt"
-
-    if ! file_exists "${TEMP_DIR}/saida_${N_MESES_SPI}.txt"; then # More efficient file check
-        safe_echo "${RED}ERRO: ${NC}O arquivo de saída para o SPI-${N_MESES_SPI} não foi gerado."
-        exit 1
+    if ! file_exists "${DIROUT}/${PREFIXO}_spi${N_MESES_SPI}.bin"; then
+        safe_echo "${RED}  ERRO: SPI-${N_MESES_SPI} não foi gerado.${NC}"
+        return 1
     fi
 
-    if [ "$SILENT_MODE" = false ]; then
-        safe_echo "${GREEN}  Convertendo .txt para .bin para SPI-${N_MESES_SPI}...${NC}"
-    fi
-    python3 "${SCRIPT_DIR}/src/converte_txt_bin.py" "${TEMP_DIR}/saida_${N_MESES_SPI}.txt" "${OUT_DIR}/${PREFIXO}_spi${N_MESES_SPI}.bin" "${NX}" "${NY}" "${NT}"
+    # 2. Gera CTL a partir do template original
+    CTL_OUT="${OUT_DIR}/${PREFIXO}_spi${N_MESES_SPI}.ctl"
+    cp "${CTL_IN}" "${CTL_OUT}"
 
-    CTL_OUT="${OUT_DIR%/}/${PREFIXO}_spi${N_MESES_SPI}.ctl"
-    if [ "$SILENT_MODE" = false ]; then
-        safe_echo "${GREEN}  Copiando e ajustando CTL para SPI-${N_MESES_SPI}...${NC}"
-    fi
-    cp "${DIR_IN}/${CTL_BASENAME}" "${CTL_OUT}"
+    # if [ "$SILENT_MODE" = false ]; then
+    #     safe_echo "${GREEN}  Gerando CTL para SPI-${N_MESES_SPI}...${NC}"
+    # fi
 
-    # Ajustar a substituição no arquivo .ctl de saída - simpler sed if possible
-    sed -i "/^dset/s#^dset.*#dset \^${PREFIXO}_spi${N_MESES_SPI}.bin#g" "${CTL_OUT}"
-
-    # Substituir a variável especificada por 'spi' entre 'vars' e 'endvars' - simpler sed if possible
-    sed -i "/^vars/,/^endvars/{
-        s/${VARIABLE_NAME}[[:space:]]*=>[[:space:]]*[^[:space:]]*/spi/
-        s/${VARIABLE_NAME}[[:space:]]*/spi/
-    }" "${CTL_OUT}"
+    # Atualiza metadados no CTL
+    sed -i \
+        -e "s|^dset .*|dset ^${PREFIXO}_spi${N_MESES_SPI}.bin|" \
+        -e "/^vars/,/^endvars/s/${VARIABLE_NAME}/spi/" \
+        -e "/^vars/,/^endvars/s/\(\w\+\)[[:space:]]*=>.*/spi 0 99 SPI-${N_MESES_SPI}/" \
+        "${CTL_OUT}"
 }
 
-# Função para processar os SPIs
+# Modified process_spis function
 process_spis() {
-    local job_queue=()
-
-    # Pré-aloca arrays para resultados
-    declare -A job_status
-
+    JOB_QUEUE=()  # Reset global queue
+    
     for N_MESES_SPI in "${N_MESES_SPI_LIST[@]}"; do
-        while [ ${#job_queue[@]} -ge $MAX_WORKERS ]; do
-            for i in "${!job_queue[@]}"; do
-                if ! kill -0 ${job_queue[$i]} 2>/dev/null; then
-                    unset job_queue[$i]
-                    break
-                fi
+        # Limit concurrent jobs
+        while (( ${#JOB_QUEUE[@]} >= MAX_WORKERS )); do
+            # Remove finished jobs from queue
+            for idx in "${!JOB_QUEUE[@]}"; do
+                kill -0 "${JOB_QUEUE[idx]}" 2>/dev/null || unset "JOB_QUEUE[$idx]"
             done
-            job_queue=("${job_queue[@]}")
-            [[ ${#job_queue[@]} -ge $MAX_WORKERS ]] && sleep 0.1
+            JOB_QUEUE=("${JOB_QUEUE[@]}")  # Reindex array
+            sleep 0.1
         done
 
         process_spi "$N_MESES_SPI" &
-        job_queue+=($!)
+        JOB_QUEUE+=($!)
     done
-    echo -e ""
-    # Espera todos os jobs terminarem
+    
+    # Wait for remaining jobs
     wait
 }
 
-# Inicia o processamento com monitoramento
+# Execution flow adjustment
 if [ "$SILENT_MODE" = false ]; then
-    echo -e "${GREEN}${BOLD}Passo 2: Iniciando o cálculo dos SPIs em paralelo...${NC}"
+    echo -e "${GREEN}${BOLD}Passo 2: Iniciando cálculo paralelo...${NC}"
 fi
 
-(
-    # Executa o processamento em background
-    process_spis &
-    MAIN_PID=$!
-
-    # Inicia o monitoramento
-    monitor_resources $MAIN_PID ${#N_MESES_SPI_LIST[@]}
-
-    # Espera o processo principal terminar
-    wait $MAIN_PID
-)
+# Run processing
+process_spis
 
 if [ "$SILENT_MODE" = false ]; then
     echo -e "${GREEN}${BOLD}Passo 2 Concluído.${NC}\n"
@@ -439,4 +364,3 @@ elif [ "$SILENT_MODE" = true ]; then
     echo -e "${GREEN}Processamento concluído! Arquivos SPI gerados em: ${BLUE}${OUT_DIR}${NC}"
 fi
 
-    
