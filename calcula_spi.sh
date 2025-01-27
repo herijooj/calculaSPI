@@ -244,6 +244,7 @@ if [ "$SILENT_MODE" = true ]; then
 else
     CDO_OPTS=""
     NCL_OPTS=""
+    echo -e ""
     echo -e "${GREEN}${BOLD}Passo 1: Convertendo BIN para NetCDF...${NC}"
 fi
 
@@ -262,11 +263,10 @@ export VARIABLE_NAME="${VARIABLE_NAME}"
 
 
 if [ "$SILENT_MODE" = false ]; then
-    echo -e "${GREEN}${BOLD}Passo 1 Concluído.${NC}\n"
     echo -e "${GREEN}${BOLD}Detalhes do Processamento:${NC}"
-    echo -e "${GREEN}  Versão do CDO:${NC}"
+    echo -e "${YELLOW}  Versão do CDO:${NC}"
     cdo -V 2>&1 | head -n 1 # CDO version
-    echo -e "${GREEN}  Resumo do arquivo de entrada (NCL):${NC}"
+    echo -e "${YELLOW}  Resumo do arquivo de entrada (NCL):${NC}"
     ncl $NCL_OPTS "${SCRIPT_DIR}/src/resumo_spi.ncl" # Detalhes do arquivo de entrada
 fi
 
@@ -276,22 +276,10 @@ elif [ "$SILENT_MODE" = true ]; then
     echo -e "${GREEN}${BOLD}Calculando os SPI's:${NC} ${BLUE}${N_MESES_SPI_LIST[@]}${NC}${GREEN}${NC}"
 fi
 
-
-# Função para log seguro
-safe_echo() {
-    # Move cursor up one line to clear progress bar area
-    echo -en "\033[1A\033[K"
-    # Print message
-    echo -e "$@"
-    # Print empty line for progress bar
-    echo ""
-}
-
 # Function to check if a file exists efficiently
 file_exists() {
   [[ -f "$1" ]]
 }
-
 
 # Função para processar um único SPI
 process_spi() {
@@ -299,13 +287,13 @@ process_spi() {
     export N_MESES_SPI="${N_MESES_SPI}"
 
     if [ "$SILENT_MODE" = false ]; then
-        safe_echo "${GREEN}  Calculando SPI-${N_MESES_SPI}...${NC}"
+        echo -e "${GREEN}  Calculando SPI-${N_MESES_SPI}...${NC}"
     fi
     # Executando o script NCL para calcular o SPI
     ncl -Q "${SCRIPT_DIR}/src/calcula_spi.ncl" # silent by default
 
     if ! file_exists "${DIROUT}/${PREFIXO}_spi${N_MESES_SPI}.bin"; then
-        safe_echo "${RED}  ERRO: SPI-${N_MESES_SPI} não foi gerado.${NC}"
+        echo -e "${RED}  ERRO: SPI-${N_MESES_SPI} não foi gerado.${NC}"
         return 1
     fi
 
@@ -314,7 +302,7 @@ process_spi() {
     cp "${CTL_IN}" "${CTL_OUT}"
 
     # if [ "$SILENT_MODE" = false ]; then
-    #     safe_echo "${GREEN}  Gerando CTL para SPI-${N_MESES_SPI}...${NC}"
+    #     echo "${GREEN}  Gerando CTL para SPI-${N_MESES_SPI}...${NC}"
     # fi
 
     # Atualiza metadados no CTL
@@ -348,16 +336,10 @@ process_spis() {
     wait
 }
 
-# Execution flow adjustment
-if [ "$SILENT_MODE" = false ]; then
-    echo -e "${GREEN}${BOLD}Passo 2: Iniciando cálculo paralelo...${NC}"
-fi
-
 # Run processing
 process_spis
 
 if [ "$SILENT_MODE" = false ]; then
-    echo -e "${GREEN}${BOLD}Passo 2 Concluído.${NC}\n"
     echo -e "${GREEN}${BOLD}Diretório de Saída:${NC} ${BLUE}${OUT_DIR}${NC}"
     echo -e "${GREEN}${BOLD}Processamento Finalizado com Sucesso!${NC}"
 elif [ "$SILENT_MODE" = true ]; then
