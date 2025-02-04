@@ -34,7 +34,7 @@ function show_help() {
     echo -e "${YELLOW}Opções:${NC}"
     echo -e "  ${GREEN}-h${NC}, ${GREEN}--help${NC}\t\t\tMostra essa mensagem de ajuda e sai"
     echo -e "  ${GREEN}--var VARIABLE${NC}, ${GREEN}-v VARIABLE${NC}\t(Opcional) Especifica a variável a ser processada (padrão 'cxc' ou 'precip' ou 'pr')"
-    echo -e "  ${GREEN}--out DIR${NC}, ${GREEN}-o DIR${NC}\t\t(Opcional) Especifica o diretório de saída (padrão: diretório atual com prefixo 'saida_')"
+    echo -e "  ${GREEN}--out DIR${NC}, ${GREEN}-o DIR${NC}\t\t(Opcional) Especifica o diretório de saída (padrão: diretório atual com sufixo '_spi')"
     echo -e "  ${GREEN}-s${NC}, ${GREEN}--silent${NC}\t\t\t(Recomendado) Modo silencioso - reduz a saída de mensagens"
     echo -e "  ${GREEN}-w${NC}, ${GREEN}--workers NUM${NC}\t\t(Opcional) Número máximo de processos paralelos (padrão: 4)"
     echo -e "${YELLOW}Nota:${NC}"
@@ -135,9 +135,9 @@ DIR_IN=$(cd "$(dirname "${CTL_IN}")" && pwd)
 CTL_BASENAME=$(basename "${CTL_IN}")
 PREFIXO=$(basename "${CTL_BASENAME}" .ctl)
 
-# se OUT_DIR não foi especificado, use o diretório atual com prefixo 'saida_'
+# se OUT_DIR não foi especificado, use o diretório atual com sufixo '_spi'
 if [[ -z "$OUT_DIR" ]]; then
-    OUT_DIR="$(pwd)/saida_${PREFIXO}"
+    OUT_DIR="$(pwd)/${PREFIXO}_spi"
 fi
 
 # Verifica se o diretório de saída existe; se não, cria
