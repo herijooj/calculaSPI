@@ -17,7 +17,9 @@ O fluxo do programa é o seguinte:
 1. **Entrada de Dados**: O programa recebe como entrada um arquivo de controle no formato `.ctl` ou `.nc`, que contém dados de precipitação mensal.
 2. **Conversão para Formato NetCDF**: O script converte os dados de precipitação para o formato `.nc` usando **CDO** (Climate Data Operators) Caso o arquivo de entrada já esteja no formato `.nc`, ele será usado diretamente.
 3. **Cálculo do SPI**: O cálculo do SPI é feito utilizando o script NCL (`calcula_spi.ncl`), que gera a saída em formato binário. (O script NCL foi ajustado para gerar a saída corretamente.)
+
 ~~4. **Conversão de Dados para Binário**: A saída gerada é convertida para o formato binário usando um script em **Python** (`converte_txt_bin.py`).~~
+
 5. **Geração de Arquivo de Controle**: Um novo arquivo `.ctl` é gerado, com as variáveis ajustadas para o cálculo do SPI.
 
 ## Requisitos
