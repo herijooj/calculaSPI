@@ -351,7 +351,7 @@ if [ "$SILENT_MODE" = false ]; then
     echo -e "${YELLOW}  Versão do CDO:${NC}"
     cdo -V 2>&1 | head -n 1 # CDO version
     echo -e "${YELLOW}  Resumo do arquivo de entrada (NCL):${NC}"
-    ncl $NCL_OPTS "${SCRIPT_DIR}/src/resumo_spi.ncl" # Detalhes do arquivo de entrada
+    ncl $NCL_OPTS "${SCRIPT_DIR}/src/resumo_spi.ncl" | sed -n '3p;7,$p' # Detalhes do arquivo de entrada
 fi
 
 if [ "$SILENT_MODE" = false ]; then
