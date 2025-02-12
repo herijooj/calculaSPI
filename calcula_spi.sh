@@ -27,8 +27,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Função de ajuda
 function show_help() {
-    echo -e "${YELLOW}Uso:${NC} ${GREEN}./calcula_spi.sh${NC} ${BLUE}[Arq .ctl]${NC} ${BLUE}[Nº de meses...]${NC} ${GREEN}[--var VARIABLE]${NC} ${GREEN}[--out PREFIX]${NC} ${GREEN}[-s]${NC}"
-    echo -e "   Esse script calcula o SPI a partir de um arquivo .ctl"
+    echo -e "${YELLOW}Uso:${NC} ${GREEN}./calcula_spi.sh${NC} ${BLUE}[Arq .ctl ou .nc]${NC} ${BLUE}[Nº de meses...]${NC} ${GREEN}[--var VARIABLE]${NC} ${GREEN}[--out PREFIX]${NC} ${GREEN}[-s]${NC}"
+    echo -e "   Esse script calcula o SPI a partir de um arquivo .ctl ou .nc"
     echo -e "   O script gera um arquivo .bin e um arquivo .ctl com a variável 'spi'"
     echo -e "${RED}ATENÇÃO!${NC} Rode na Chagos. Na minha máquina local não funciona."
     echo -e "${YELLOW}Opções:${NC}"
@@ -124,16 +124,31 @@ if [[ ! -f "${CTL_IN}" ]]; then
     exit 1
 fi
 
+# Detectar tipo de arquivo
+FILE_TYPE=""
+if [[ "${CTL_IN}" == *.ctl ]]; then
+    FILE_TYPE="CTL"
+elif [[ "${CTL_IN}" == *.nc || "${CTL_IN}" == *.NC || "${CTL_IN}" == *.netcdf ]]; then
+    FILE_TYPE="NC"
+else
+    echo -e "${RED}ERRO: ${NC}Tipo de arquivo não suportado. Use .ctl ou .nc"
+    exit 1
+fi
+
 if [ "$SILENT_MODE" = false ]; then
     echo -e "${GREEN}${BOLD}Configurações do SPI:${NC} ${BLUE}${N_MESES_SPI_LIST[@]}${NC}"
-    echo -e "${GREEN}Arquivo CTL de entrada:${NC} ${BLUE}${CTL_IN}${NC}"
+    echo -e "${GREEN}Arquivo de entrada:${NC} ${BLUE}${CTL_IN}${NC}"
 fi
 
 
 # Definir DIR_IN e PREFIXO aqui, após garantir que CTL_IN existe
 DIR_IN=$(cd "$(dirname "${CTL_IN}")" && pwd)
 CTL_BASENAME=$(basename "${CTL_IN}")
-PREFIXO=$(basename "${CTL_BASENAME}" .ctl)
+if [ "$FILE_TYPE" = "CTL" ]; then
+    PREFIXO=$(basename "${CTL_BASENAME}" .ctl)
+else
+    PREFIXO=$(basename "${CTL_BASENAME}" .nc)
+fi
 
 # se OUT_DIR não foi especificado, use o diretório atual com sufixo '_spi'
 if [[ -z "$OUT_DIR" ]]; then
@@ -153,6 +168,7 @@ parse_ctl_file() {
     NY=""
     NT=""
     DSET=""
+    TITLE=""
     VARIABLES=()
     IN_VARS_BLOCK=false
 
@@ -165,7 +181,9 @@ parse_ctl_file() {
             continue
         fi
 
-        if [[ "$line" =~ ^xdef[[:space:]]+([0-9]+)[[:space:]]+.* ]]; then
+        if [[ "$line" =~ ^title[[:space:]]+(.*) ]]; then
+            TITLE="${BASH_REMATCH[1]}"
+        elif [[ "$line" =~ ^xdef[[:space:]]+([0-9]+)[[:space:]]+.* ]]; then
             NX=${BASH_REMATCH[1]}
         elif [[ "$line" =~ ^ydef[[:space:]]+([0-9]+)[[:space:]]+.* ]]; then
             NY=${BASH_REMATCH[1]}
@@ -194,8 +212,68 @@ parse_ctl_file() {
     done < "${ctl_file}"
 }
 
-# Chamar parse_ctl_file com o caminho completo do arquivo .ctl
-parse_ctl_file "${DIR_IN}/${CTL_BASENAME}"
+# Função para analisar arquivo NetCDF
+parse_nc_file() {
+    local nc_file="$1"
+    # Inicializa variáveis
+    NX=$(ncdump -h "$nc_file" | grep -m1 "^[[:space:]]*\w* = " | awk '{print $3}')
+    NY=$(ncdump -h "$nc_file" | grep -m2 "^[[:space:]]*\w* = " | tail -n1 | awk '{print $3}')
+    NT=$(ncdump -h "$nc_file" | grep -m3 "^[[:space:]]*\w* = " | tail -n1 | awk '{print $3}')
+    VARIABLES=($(ncdump -h "$nc_file" | awk '/float|double/ {print $2}' | sed 's/(.*//'))
+    DSET="$nc_file"
+    DSET_DIR=$(dirname "$nc_file")
+    DSET_FILE=$(basename "$nc_file")
+
+    # Tenta extrair o título do NetCDF
+    TITLE=$(ncdump -h "$nc_file" | grep -i "title =" | cut -d'"' -f2 || \
+           ncdump -h "$nc_file" | grep -i "title:" | cut -d'"' -f2)
+    
+    if [[ -z "$TITLE" ]]; then
+        TITLE="Dados do arquivo $(basename "$nc_file")"
+    fi
+
+    # Extrai informações temporais do arquivo NC
+    # Primeiro, tenta encontrar a variável de tempo (geralmente 'time' ou 'TIME')
+    TIME_VAR=$(ncdump -h "$nc_file" | grep -i "time:units" | head -1 | cut -d'"' -f2)
+    if [[ -z "$TIME_VAR" ]]; then
+        # Se não encontrar units direto, procura pela variável tempo
+        TIME_VAR=$(ncdump -h "$nc_file" | awk '/\t*time(\t|\s)/ {print $2}' | head -1)
+    fi
+
+    # Extrai a data inicial e o incremento temporal
+    if [[ -n "$TIME_VAR" ]]; then
+        # Usa CDO para obter informações temporais
+        TIME_INFO=$(cdo -s showtimestamp "$nc_file" | head -1)
+        INITIAL_DATE=$(echo "$TIME_INFO" | awk '{print $1}')
+        
+        # Converte para o formato "DDmmmYYYY"
+        FORMATTED_DATE=$(date -d "$INITIAL_DATE" "+%d%b%Y" | tr '[:upper:]' '[:lower:]')
+        
+        # Define o incremento temporal (assume mensal por padrão)
+        TIME_STEP="1mo"
+    else
+        # Valores padrão se não conseguir encontrar
+        FORMATTED_DATE="01jan1900"
+        TIME_STEP="1mo"
+        echo -e "${YELLOW}AVISO: ${NC}Não foi possível determinar a data inicial. Usando padrão: ${FORMATTED_DATE}"
+    fi
+
+    # if [ "$SILENT_MODE" = false ]; then
+        # echo "Detalhes do arquivo NetCDF:"
+        # echo "  Título: ${TITLE}"
+        # echo "  Dimensões: ${NX}x${NY}x${NT}"
+        # echo "  Data Inicial: ${FORMATTED_DATE}"
+        # echo "  Incremento: ${TIME_STEP}"
+        # echo "  Variáveis: ${VARIABLES[@]}"
+    # fi
+}
+
+# Processar arquivo de acordo com seu tipo
+if [ "$FILE_TYPE" = "CTL" ]; then
+    parse_ctl_file "${DIR_IN}/${CTL_BASENAME}"
+else
+    parse_nc_file "${CTL_IN}"
+fi
 
 # Verifica se as dimensões foram encontradas
 if [[ -z "$NX" || -z "$NY" || -z "$NT" ]]; then
@@ -212,20 +290,22 @@ if [[ -z "$VARIABLE_NAME" ]]; then
     elif [[ " ${VARIABLES[@]} " =~ " pr " ]]; then
         VARIABLE_NAME="pr"
     else
-        echo -e "${RED}ERRO: ${NC}O arquivo ctl não contém 'cxc' ou 'precip' ou 'pr'."
-        exit 1
+        # Se nenhuma variável padrão for encontrada, use a primeira variável encontrada
+        VARIABLE_NAME="${VARIABLES[0]}"
+        echo -e "${YELLOW}AVISO: ${NC}Nenhuma variável padrão encontrada. Usando a variável '${VARIABLE_NAME}' do arquivo ctl."
     fi
 elif [[ ! " ${VARIABLES[@]} " =~ " ${VARIABLE_NAME} " ]]; then
     echo -e "${RED}ERRO: ${NC}O arquivo ctl deve conter a variável '${VARIABLE_NAME}'."
     exit 1
 fi
 
-# Determinar o caminho completo do arquivo binário de entrada:
+# Determinar o caminho completo do arquivo binário de entrada
 ARQ_BIN_IN="${DSET_DIR}/${DSET_FILE}"
-if [ "$SILENT_MODE" = false ]; then
-    echo -e "${GREEN}Arquivo BIN de entrada:${NC} ${BLUE}${ARQ_BIN_IN}${NC}"
+if [ "$FILE_TYPE" = "CTL" ]; then
+    if [ "$SILENT_MODE" = false ]; then
+        echo -e "${GREEN}Arquivo BIN de entrada:${NC} ${BLUE}${ARQ_BIN_IN}${NC}"
+    fi
 fi
-
 
 # Verificar se o arquivo binário existe:
 if [[ ! -f "${ARQ_BIN_IN}" ]]; then
@@ -245,14 +325,19 @@ else
     CDO_OPTS=""
     NCL_OPTS=""
     echo -e ""
-    echo -e "${GREEN}${BOLD}Passo 1: Convertendo BIN para NetCDF...${NC}"
 fi
 
-
-(
-    # Divide o arquivo em chunks e processa em paralelo
+if [ "$FILE_TYPE" = "CTL" ]; then
+    if [ "$SILENT_MODE" = false ]; then
+        echo -e "${GREEN}${BOLD}Passo 1: Convertendo BIN para NetCDF...${NC}"
+    fi
     cdo $CDO_OPTS -P $MAX_WORKERS -f nc import_binary "${DIR_IN}/${CTL_BASENAME}" "${TEMP_DIR}/${PREFIXO}.nc"
-)
+else
+    if [ "$SILENT_MODE" = false ]; then
+        echo -e "${GREEN}${BOLD}Passo 1: Copiando arquivo NetCDF...${NC}"
+    fi
+    cp "${CTL_IN}" "${TEMP_DIR}/${PREFIXO}.nc"
+fi
 
 # Define variáveis de ambiente para apontar para o diretório temporário
 export DIRIN="${TEMP_DIR}/"
@@ -260,7 +345,6 @@ export DIROUT="${OUT_DIR}/"
 export FILEIN="${PREFIXO}.nc"
 export PREFIXO="${PREFIXO}"
 export VARIABLE_NAME="${VARIABLE_NAME}"
-
 
 if [ "$SILENT_MODE" = false ]; then
     echo -e "${GREEN}${BOLD}Detalhes do Processamento:${NC}"
@@ -299,18 +383,29 @@ process_spi() {
 
     # 2. Gera CTL a partir do template original
     CTL_OUT="${OUT_DIR}/${PREFIXO}_spi${N_MESES_SPI}.ctl"
-    cp "${CTL_IN}" "${CTL_OUT}"
-
-    # if [ "$SILENT_MODE" = false ]; then
-    #     echo "${GREEN}  Gerando CTL para SPI-${N_MESES_SPI}...${NC}"
-    # fi
-
-    # Atualiza metadados no CTL
-    sed -i \
-        -e "s|^dset .*|dset ^${PREFIXO}_spi${N_MESES_SPI}.bin|" \
-        -e "/^vars/,/^endvars/s/${VARIABLE_NAME}/spi/" \
-        -e "/^vars/,/^endvars/s/\(\w\+\)[[:space:]]*=>.*/spi 0 99 SPI-${N_MESES_SPI}/" \
-        "${CTL_OUT}"
+    if [ "$FILE_TYPE" = "CTL" ]; then
+        # Usar o CTL original como template
+        cp "${CTL_IN}" "${CTL_OUT}"
+        sed -i \
+            -e "s|^dset .*|dset ^${PREFIXO}_spi${N_MESES_SPI}.bin|" \
+            -e "s|^title.*|title SPI${N_MESES_SPI} do ${TITLE}|" \
+            -e "/^vars/,/^endvars/s/${VARIABLE_NAME}/spi${N_MESES_SPI}/" \
+            -e "/^vars/,/^endvars/s/\(\w\+\)[[:space:]]*=>.*/spi${N_MESES_SPI} 0 99 SPI-${N_MESES_SPI}/" \
+            "${CTL_OUT}"
+    else
+        # Criar um novo CTL para o arquivo binário
+        cat > "${CTL_OUT}" << EOF
+dset ^${PREFIXO}_spi${N_MESES_SPI}.bin
+title SPI${N_MESES_SPI} do ${TITLE}
+undef -9999.9
+xdef ${NX} linear 1 1
+ydef ${NY} linear 1 1
+tdef ${NT} linear ${FORMATTED_DATE} ${TIME_STEP}
+vars 1
+spi${N_MESES_SPI} 0 99 SPI-${N_MESES_SPI}
+endvars
+EOF
+    fi
 }
 
 # Modified process_spis function
