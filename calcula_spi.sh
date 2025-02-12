@@ -1,5 +1,4 @@
 #!/bin/bash
-# calcula_spi.sh
 
 # Implementado por Eduardo Machado
 # 2015
@@ -7,41 +6,19 @@
 # Modificado por Heric Camargo
 # 2024
 
-set_colors() {
-    RED='\033[1;31m'        # Vermelho brilhante
-    GREEN='\033[1;32m'      # Verde brilhante
-    YELLOW='\033[1;93m'     # Amarelo claro
-    BLUE='\033[1;36m'       # Azul claro ciano
-    NC='\033[0m'            # Sem cor (reset)
-    BOLD='\033[1m'           # Negrito
-}
+# Determina o diretório onde o script está localizado
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Carrega as bibliotecas
+source "${SCRIPT_DIR}/src/config.sh"
+source "${SCRIPT_DIR}/src/logging.sh"
+source "${SCRIPT_DIR}/src/parser.sh"
 
 # Testa se está em um terminal para exibir cores
 if [ -t 1 ] && ! grep -q -e '--no-color' <<<"$@"
 then
     set_colors
 fi
-
-# Determina o diretório onde o script está localizado
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Função de ajuda
-function show_help() {
-    echo -e "${YELLOW}Uso:${NC} ${GREEN}./calcula_spi.sh${NC} ${BLUE}[Arq .ctl ou .nc]${NC} ${BLUE}[Nº de meses...]${NC} ${GREEN}[--var VARIABLE]${NC} ${GREEN}[--out PREFIX]${NC} ${GREEN}[-s]${NC}"
-    echo -e "   Esse script calcula o SPI a partir de um arquivo .ctl ou .nc"
-    echo -e "   O script gera um arquivo .bin e um arquivo .ctl com a variável 'spi'"
-    echo -e "${RED}ATENÇÃO!${NC} Rode na Chagos. Na minha máquina local não funciona."
-    echo -e "${YELLOW}Opções:${NC}"
-    echo -e "  ${GREEN}-h${NC}, ${GREEN}--help${NC}\t\t\tMostra essa mensagem de ajuda e sai"
-    echo -e "  ${GREEN}--var VARIABLE${NC}, ${GREEN}-v VARIABLE${NC}\t(Opcional) Especifica a variável a ser processada (padrão 'cxc' ou 'precip' ou 'pr')"
-    echo -e "  ${GREEN}--out DIR${NC}, ${GREEN}-o DIR${NC}\t\t(Opcional) Especifica o diretório de saída (padrão: diretório atual com sufixo '_spi')"
-    echo -e "  ${GREEN}-s${NC}, ${GREEN}--silent${NC}\t\t\t(Recomendado) Modo silencioso - reduz a saída de mensagens"
-    echo -e "  ${GREEN}-w${NC}, ${GREEN}--workers NUM${NC}\t\t(Opcional) Número máximo de processos paralelos (padrão: 4)"
-    echo -e "${YELLOW}Nota:${NC}"
-    echo -e "  Se não especificar os meses, serão usados: 1 3 6 9 12 24 48 60"
-    echo -e "${YELLOW}Exemplo:${NC}"
-    echo -e "  ${GREEN}./calcula_spi.sh${NC} ${BLUE}./arquivos/precipitacao.ctl${NC} ${BLUE}3 6 9 12${NC} ${GREEN}--var precip${NC} ${GREEN}--out resultado_${NC} ${GREEN}-s${NC}"
-}
 
 # Inicializa a variável de nome de variável padrão
 VARIABLE_NAME=""
@@ -51,59 +28,11 @@ SILENT_MODE=false
 CTL_IN=""
 N_MESES_SPI_LIST=()
 
-# Inicializa a variável de workers com o número de CPUs
-#MAX_WORKERS=$(nproc)
-MAX_WORKERS=4 # mais sensato com seus colegas.
+# Inicializa a variável de workers
+MAX_WORKERS=4
 
 # Processa os argumentos
-while [[ "$#" -gt 0 ]]; do
-    case "$1" in
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        -s|--silent)
-            SILENT_MODE=true
-            shift
-            ;;
-        --var|-v)
-            VARIABLE_NAME="$2"
-            shift 2
-            ;;
-        --out|-o)
-            if [[ -n "$2" && "$2" != -* ]]; then
-                OUT_DIR="$2"
-                shift 2
-            else
-                echo -e "${RED}ERRO: ${NC}A opção '--out' requer um diretório."
-                show_help
-                exit 1
-            fi
-            ;;
-        -w|--workers)
-            if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
-                MAX_WORKERS="$2"
-                shift 2
-            else
-                echo -e "${RED}ERRO: ${NC}A opção '--workers' requer um número."
-                show_help
-                exit 1
-            fi
-            ;;
-        -*)
-            echo -e "${RED}ERRO: ${NC}Opção desconhecida: $1"
-            exit 1
-            ;;
-        *)
-            if [[ -z "$CTL_IN" ]]; then
-                CTL_IN="$1"
-            else
-                N_MESES_SPI_LIST+=("$1")
-            fi
-            shift
-            ;;
-    esac
-done
+process_arguments "$@"
 
 # Verifica se o arquivo .ctl foi especificado
 if [[ -z "$CTL_IN" ]]; then
@@ -159,114 +88,6 @@ fi
 if [[ ! -d "${OUT_DIR}" ]]; then
     mkdir -p "${OUT_DIR}"
 fi
-
-# Função para analisar o arquivo .ctl
-parse_ctl_file() {
-    local ctl_file="$1"
-    # Inicializa variáveis
-    NX=""
-    NY=""
-    NT=""
-    DSET=""
-    TITLE=""
-    VARIABLES=()
-    IN_VARS_BLOCK=false
-
-    while read -r line; do
-        # Remove espaços em branco no início e no fim and comments more robustly
-        line="$(sed -e 's/#.*$//' <<<"$line")" # Remove comments after #
-        line="$(echo -e "${line}" | sed -e 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-        # Ignora linhas vazias
-        if [[ -z "$line" ]]; then
-            continue
-        fi
-
-        if [[ "$line" =~ ^title[[:space:]]+(.*) ]]; then
-            TITLE="${BASH_REMATCH[1]}"
-        elif [[ "$line" =~ ^xdef[[:space:]]+([0-9]+)[[:space:]]+.* ]]; then
-            NX=${BASH_REMATCH[1]}
-        elif [[ "$line" =~ ^ydef[[:space:]]+([0-9]+)[[:space:]]+.* ]]; then
-            NY=${BASH_REMATCH[1]}
-        elif [[ "$line" =~ ^tdef[[:space:]]+([0-9]+)[[:space:]]+.* ]]; then
-            NT=${BASH_REMATCH[1]}
-        elif [[ "$line" =~ ^dset[[:space:]]+(\^*)(.*) ]]; then
-            DSET="${line#dset }"
-            if [[ "${BASH_REMATCH[1]}" == "^" ]]; then
-                DSET_DIR="${DIR_IN}"
-                DSET_FILE="${BASH_REMATCH[2]}"
-            else
-                DSET_PATH="${BASH_REMATCH[2]}"
-                DSET_DIR=$(dirname "${DSET_PATH}")
-                DSET_FILE=$(basename "${DSET_PATH}")
-            fi
-        elif [[ "$line" =~ ^vars[[:space:]]+ ]]; then
-            IN_VARS_BLOCK=true
-        elif [[ "$line" =~ ^endvars ]]; then
-            IN_VARS_BLOCK=false
-        elif $IN_VARS_BLOCK; then
-            # Pega o nome da variável
-            var_line=$(echo "$line" | awk '{print $1}')
-            var_name=$(echo "$var_line" | sed 's/[=>].*$//')
-            VARIABLES+=("$var_name")
-        fi
-    done < "${ctl_file}"
-}
-
-# Função para analisar arquivo NetCDF
-parse_nc_file() {
-    local nc_file="$1"
-    # Inicializa variáveis
-    NX=$(ncdump -h "$nc_file" | grep -m1 "^[[:space:]]*\w* = " | awk '{print $3}')
-    NY=$(ncdump -h "$nc_file" | grep -m2 "^[[:space:]]*\w* = " | tail -n1 | awk '{print $3}')
-    NT=$(ncdump -h "$nc_file" | grep -m3 "^[[:space:]]*\w* = " | tail -n1 | awk '{print $3}')
-    VARIABLES=($(ncdump -h "$nc_file" | awk '/float|double/ {print $2}' | sed 's/(.*//'))
-    DSET="$nc_file"
-    DSET_DIR=$(dirname "$nc_file")
-    DSET_FILE=$(basename "$nc_file")
-
-    # Tenta extrair o título do NetCDF
-    TITLE=$(ncdump -h "$nc_file" | grep -i "title =" | cut -d'"' -f2 || \
-           ncdump -h "$nc_file" | grep -i "title:" | cut -d'"' -f2)
-    
-    if [[ -z "$TITLE" ]]; then
-        TITLE="Dados do arquivo $(basename "$nc_file")"
-    fi
-
-    # Extrai informações temporais do arquivo NC
-    # Primeiro, tenta encontrar a variável de tempo (geralmente 'time' ou 'TIME')
-    TIME_VAR=$(ncdump -h "$nc_file" | grep -i "time:units" | head -1 | cut -d'"' -f2)
-    if [[ -z "$TIME_VAR" ]]; then
-        # Se não encontrar units direto, procura pela variável tempo
-        TIME_VAR=$(ncdump -h "$nc_file" | awk '/\t*time(\t|\s)/ {print $2}' | head -1)
-    fi
-
-    # Extrai a data inicial e o incremento temporal
-    if [[ -n "$TIME_VAR" ]]; then
-        # Usa CDO para obter informações temporais
-        TIME_INFO=$(cdo -s showtimestamp "$nc_file" | head -1)
-        INITIAL_DATE=$(echo "$TIME_INFO" | awk '{print $1}')
-        
-        # Converte para o formato "DDmmmYYYY"
-        FORMATTED_DATE=$(date -d "$INITIAL_DATE" "+%d%b%Y" | tr '[:upper:]' '[:lower:]')
-        
-        # Define o incremento temporal (assume mensal por padrão)
-        TIME_STEP="1mo"
-    else
-        # Valores padrão se não conseguir encontrar
-        FORMATTED_DATE="01jan1900"
-        TIME_STEP="1mo"
-        echo -e "${YELLOW}AVISO: ${NC}Não foi possível determinar a data inicial. Usando padrão: ${FORMATTED_DATE}"
-    fi
-
-    # if [ "$SILENT_MODE" = false ]; then
-        # echo "Detalhes do arquivo NetCDF:"
-        # echo "  Título: ${TITLE}"
-        # echo "  Dimensões: ${NX}x${NY}x${NT}"
-        # echo "  Data Inicial: ${FORMATTED_DATE}"
-        # echo "  Incremento: ${TIME_STEP}"
-        # echo "  Variáveis: ${VARIABLES[@]}"
-    # fi
-}
 
 # Processar arquivo de acordo com seu tipo
 if [ "$FILE_TYPE" = "CTL" ]; then
@@ -351,7 +172,7 @@ if [ "$SILENT_MODE" = false ]; then
     echo -e "${YELLOW}  Versão do CDO:${NC}"
     cdo -V 2>&1 | head -n 1 # CDO version
     echo -e "${YELLOW}  Resumo do arquivo de entrada (NCL):${NC}"
-    ncl $NCL_OPTS "${SCRIPT_DIR}/src/resumo_spi.ncl" # Detalhes do arquivo de entrada
+    ncl $NCL_OPTS "${SCRIPT_DIR}/src/resumo_spi.ncl" | tail -n +7 # Detalhes do arquivo de entrada
 fi
 
 if [ "$SILENT_MODE" = false ]; then
@@ -359,11 +180,6 @@ if [ "$SILENT_MODE" = false ]; then
 elif [ "$SILENT_MODE" = true ]; then
     echo -e "${GREEN}${BOLD}Calculando os SPI's:${NC} ${BLUE}${N_MESES_SPI_LIST[@]}${NC}${GREEN}${NC}"
 fi
-
-# Function to check if a file exists efficiently
-file_exists() {
-  [[ -f "$1" ]]
-}
 
 # Função para processar um único SPI
 process_spi() {
