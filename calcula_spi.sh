@@ -341,12 +341,8 @@ process_file() {
     if [[ -z "$OUT_DIR_BASE" ]]; then
         OUT_DIR="$(pwd)/${PREFIXO}_spi"
     else
-        # Se processando múltiplos arquivos, criar subdiretórios para cada um
-        if [[ ${#CTL_FILES[@]} -gt 1 ]]; then
-            OUT_DIR="${OUT_DIR_BASE}/${PREFIXO}"
-        else
-            OUT_DIR="${OUT_DIR_BASE}"
-        fi
+        # Sempre criar um subdiretório para cada arquivo, mesmo que seja apenas um
+        OUT_DIR="${OUT_DIR_BASE}/${PREFIXO}"
     fi
 
     # Verificar se o diretório de saída existe; se não, criar
